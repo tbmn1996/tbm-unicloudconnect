@@ -39,7 +39,7 @@ Die Funktionalität ist in sechs strikt getrennte TypeScript-Module und einen is
   * Registrierung als macOS-Anmeldeobjekt ("Beim Login starten").
 
 ### 2. LearnWeb Core
-* **Dateipfad-Scaffold:** [src/learnweb-core/index.ts](file:///Users/thomasniermann/Scripts/tbm-unicloudconnect/src/learnweb-core/index.ts)
+* **Dateipfad-Scaffold:** [src/learnweb-core/index.ts](../src/learnweb-core/index.ts)
 * **Verantwortlichkeiten:**
   * Sichere Login-Prüfung gegen das Münster LearnWeb.
   * Session-Verwaltung und Cookie-Erneuerung (MoodleSession).
@@ -48,7 +48,7 @@ Die Funktionalität ist in sechs strikt getrennte TypeScript-Module und einen is
 * *Darf nicht:* Lokale Pfade berechnen oder Dateien speichern.
 
 ### 3. Sync Engine
-* **Dateipfad-Scaffold:** [src/sync-engine/index.ts](file:///Users/thomasniermann/Scripts/tbm-unicloudconnect/src/sync-engine/index.ts)
+* **Dateipfad-Scaffold:** [src/sync-engine/index.ts](../src/sync-engine/index.ts)
 * **Verantwortlichkeiten:**
   * Abgleich der im LearnWeb gefundenen Struktur mit dem lokalen DB-Zustand.
   * Erzeugung von Download- und Transkriptions-Jobs basierend auf den Selektions-Regeln des Nutzers.
@@ -56,7 +56,7 @@ Die Funktionalität ist in sechs strikt getrennte TypeScript-Module und einen is
   * Protokollierung der Sync-Läufe (`SyncRun`).
 
 ### 4. Local Library
-* **Dateipfad-Scaffold:** [src/local-library/index.ts](file:///Users/thomasniermann/Scripts/tbm-unicloudconnect/src/local-library/index.ts)
+* **Dateipfad-Scaffold:** [src/local-library/index.ts](../src/local-library/index.ts)
 * **Verantwortlichkeiten:**
   * Generierung konsistenter, macOS-kompatibler Verzeichnispfade und Dateinamen.
   * Speicherung der heruntergeladenen Binärdaten im Zielordner.
@@ -72,7 +72,7 @@ Die Funktionalität ist in sechs strikt getrennte TypeScript-Module und einen is
   * Rückmeldung des Job-Status an die SQLite-Datenbank.
 
 ### 6. MCP-Modul
-* **Dateipfad-Scaffold:** [src/mcp/index.ts](file:///Users/thomasniermann/Scripts/tbm-unicloudconnect/src/mcp/index.ts)
+* **Dateipfad-Scaffold:** [src/mcp/index.ts](../src/mcp/index.ts)
 * **Verantwortlichkeiten:**
   * Bereitstellung des lokalen Model Context Protocols (stdio-basiert).
   * Bereitstellung strukturierter read-only Abfragewerkzeuge für lokale Agenten (z. B. Claude/Codex) über das LearnWeb-Konto.

@@ -40,7 +40,7 @@ Dieses Dokument beschreibt die neun Schritte des Erst-Einrichtungs-Assistenten (
 ### Ablauf:
 * Eingabefelder: **LearnWeb-Nutzername** und **Passwort**.
 * *Wichtig:* Keine Eingabe einer URL. Die URL für das LearnWeb der Universität Münster ist intern fest als Konstante hinterlegt.
-* Nach Klick auf "Verbinden" führt das Backend einen Test-Login (über [src/learnweb-core/index.ts](file:///Users/thomasniermann/Scripts/tbm-unicloudconnect/src/learnweb-core/index.ts)) durch.
+* Nach Klick auf "Verbinden" führt das Backend einen Test-Login (über [src/learnweb-core/index.ts](../src/learnweb-core/index.ts)) durch.
 * **Erfolg**: Das Passwort wird verschlüsselt in der **macOS Keychain (Schlüsselbund)** abgelegt. Ein Verweis-Eintrag (`credential_refs`) wird in der SQLite-Datenbank erzeugt.
 * **Fehler**: Anzeige einer verständlichen Fehlermeldung (z. B. "Kennwort ungültig" oder "Netzwerkverbindung fehlgeschlagen"), ohne sicherheitsrelevante Details oder HTML-Dumps zu loggen.
 

@@ -6,6 +6,22 @@
 
 Lokaler, read-only LearnWeb-Sync fuer macOS (TypeScript-Module: LearnWeb-Core, Sync-Engine, Local-Library, MCP). App-Shell/GUI-Technologie noch offen.
 
+## Guardrails (MVP 1)
+
+- **Plattform**: MVP 1 ist strikt macOS-only. Keine Windows- oder Linux-Kompatibilität implementieren.
+- **Speicherung (Local-first)**: Alle Daten und die Synchronisation laufen komplett local-first auf dem Rechner des Nutzers. Keine Cloud-Speicherung oder zentrale Server.
+- **Keine Notion-Integration**: Es gibt in MVP 1 keine Notion-Push-Pfade, Notion-Datenbanken oder Notion-File-Uploads. Keine Google-Drive-, Notion- oder Lovable-Cloud-Flows als MVP-Kern.
+- **LearnWeb-Zugriff**: Der Zugriff auf das LearnWeb ist strikt read-only. Es wird nichts zurückgeschrieben.
+- **Credentials**: Passwörter und Zugangsdaten werden ausschließlich in der macOS Keychain (Schlüsselbund) gesichert. Keine Klartext-Credentials in `.env`, der SQLite-DB oder Logs.
+- **Zustand (State)**: Der Anwendungszustand wird in einer lokalen SQLite-Datenbank verwaltet.
+- **Output**: Die synchronisierten Vorlesungsdateien werden in einer lokalen Ordnerstruktur abgelegt. Aufzeichnungstranskripte werden als Markdown-Dateien (.md) ausgegeben.
+- **MCP-Schnittstelle**: Der Model Context Protocol (MCP) Connector ist optional, lokal, stdio-basiert, muss explizit vom Nutzer im Dashboard aktiviert werden und ist nicht auf die lokal ausgewählte Sync-Auswahl beschränkt (sondern erlaubt kontoweiten Lesezugriff).
+- **Referenzspezifikationen**: Folgende Dokumente sind die kanonische Projektbeschreibung und für Agenten bindend:
+  - [docs/NORDSTERN.md](docs/NORDSTERN.md) (Produktziel und Datenschutzmodell)
+  - [docs/MVP1_SCOPE.md](docs/MVP1_SCOPE.md) (Harte Scope-Grenzen und Tabellen-Zustände)
+  - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (App-Modell, Modulzuständigkeiten und SQLite-Schema)
+  - [docs/SETUP_FLOW.md](docs/SETUP_FLOW.md) (9 Schritte des Setup-Wizards)
+
 ## Stack
 
 - Profil: `ts-service` (TypeScript-Service)

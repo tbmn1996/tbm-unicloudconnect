@@ -8,18 +8,17 @@ Dieses Repository dient als saubere, local-first Spezifikation und Implementieru
 
 Die kanonischen Anforderungen und Design-Entscheidungen des Projekts sind im Repository dokumentiert:
 
-* 📄 **[docs/NORDSTERN.md](file:///Users/thomasniermann/Scripts/tbm-unicloudconnect/docs/NORDSTERN.md)**: Produktziel, Zielgruppen und der übergeordnete Funktionsanspruch.
-* 🎯 **[docs/MVP1_SCOPE.md](file:///Users/thomasniermann/Scripts/tbm-unicloudconnect/docs/MVP1_SCOPE.md)**: Harte Scope-Grenzen (Was ist drin, was bleibt draußen).
-* 🏛️ **[docs/ARCHITECTURE.md](file:///Users/thomasniermann/Scripts/tbm-unicloudconnect/docs/ARCHITECTURE.md)**: Das App-Modell, die Modul-Zuständigkeiten und die Datenflüsse.
-* ⚙️ **[docs/SETUP_FLOW.md](file:///Users/thomasniermann/Scripts/tbm-unicloudconnect/docs/SETUP_FLOW.md)**: Ablauf und Design des 9-Schritt Setup-Wizards.
-* 📝 **[docs/adr/0001-macos-local-first-no-notion.md](file:///Users/thomasniermann/Scripts/tbm-unicloudconnect/docs/adr/0001-macos-local-first-no-notion.md)**: Architekturentscheidung zu macOS-only, Local-first und Notion-Ausschluss.
+* 📄 **[docs/NORDSTERN.md](docs/NORDSTERN.md)**: Produktziel, Zielgruppen und der übergeordnete Funktionsanspruch.
+* 🎯 **[docs/MVP1_SCOPE.md](docs/MVP1_SCOPE.md)**: Harte Scope-Grenzen (Was ist drin, was bleibt draußen).
+* 🏛️ **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**: Das App-Modell, die Modul-Zuständigkeiten und die Datenflüsse.
+* ⚙️ **[docs/SETUP_FLOW.md](docs/SETUP_FLOW.md)**: Ablauf und Design des 9-Schritt Setup-Wizards.
+* 📝 **[docs/adr/0001-macos-local-first-no-notion.md](docs/adr/0001-macos-local-first-no-notion.md)**: Architekturentscheidung zu macOS-only, Local-first und Notion-Ausschluss.
 
 ---
 
 ## Status
 
-Reines Scaffold, Spezifikationsphase abgeschlossen. 
-Offene Architekturentscheidungen (z. B. konkrete GUI-Shell wie Tauri, Electron oder native Swift/SwiftUI) sind in der Spezifikation festgehalten.
+Scaffold + kanonische Spezifikation vorhanden; Implementierung der App-Shell/GUI-Technologie noch offen.
 
 ## Architektur (Module)
 
