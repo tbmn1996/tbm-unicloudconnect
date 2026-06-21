@@ -75,7 +75,7 @@ Die Funktionalität ist in sechs strikt getrennte TypeScript-Module und einen is
 * **Dateipfad-Scaffold:** [src/mcp/index.ts](../src/mcp/index.ts)
 * **Verantwortlichkeiten:**
   * Bereitstellung des lokalen Model Context Protocols (stdio-basiert).
-  * Bereitstellung strukturierter read-only Abfragewerkzeuge für lokale Agenten (z. B. Claude/Codex) über das LearnWeb-Konto.
+  * Bereitstellung strukturierter read-only Abfragewerkzeuge für lokale Agenten (z. B. Claude/Codex) über das LearnWeb-Konto. Die genaue Spezifikation und Parameter der 9 MCP-Tools sind in [docs/MCP_SPEC.md](MCP_SPEC.md) dokumentiert.
 
 ---
 

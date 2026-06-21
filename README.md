@@ -12,6 +12,7 @@ Die kanonischen Anforderungen und Design-Entscheidungen des Projekts sind im Rep
 * 🎯 **[docs/MVP1_SCOPE.md](docs/MVP1_SCOPE.md)**: Harte Scope-Grenzen (Was ist drin, was bleibt draußen).
 * 🏛️ **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**: Das App-Modell, die Modul-Zuständigkeiten und die Datenflüsse.
 * ⚙️ **[docs/SETUP_FLOW.md](docs/SETUP_FLOW.md)**: Ablauf und Design des 9-Schritt Setup-Wizards.
+* 🔌 **[docs/MCP_SPEC.md](docs/MCP_SPEC.md)**: Technische Spezifikation der 9 read-only MCP-Tools.
 * 📝 **[docs/adr/0001-macos-local-first-no-notion.md](docs/adr/0001-macos-local-first-no-notion.md)**: Architekturentscheidung zu macOS-only, Local-first und Notion-Ausschluss.
 
 ---

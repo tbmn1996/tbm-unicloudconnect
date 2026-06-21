@@ -21,6 +21,7 @@ Lokaler, read-only LearnWeb-Sync fuer macOS (TypeScript-Module: LearnWeb-Core, S
   - [docs/MVP1_SCOPE.md](docs/MVP1_SCOPE.md) (Harte Scope-Grenzen und Tabellen-Zustände)
   - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (App-Modell, Modulzuständigkeiten und SQLite-Schema)
   - [docs/SETUP_FLOW.md](docs/SETUP_FLOW.md) (9 Schritte des Setup-Wizards)
+  - [docs/MCP_SPEC.md](docs/MCP_SPEC.md) (Spezifikation der 9 read-only MCP-Tools)
 
 ## Stack
 
