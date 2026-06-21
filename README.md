@@ -19,7 +19,10 @@ Die kanonischen Anforderungen und Design-Entscheidungen des Projekts sind im Rep
 
 ## Status
 
-Scaffold + kanonische Spezifikation vorhanden; Implementierung der App-Shell/GUI-Technologie noch offen.
+Lauffähiger Electron-Vertikalschnitt vorhanden: Statusbar-App, React-Setup-Wizard und Dashboard,
+Keychain-Login, Kursauswahl, SQLite-Zustand sowie manueller Datei-Sync mit SHA-256-Deduplizierung.
+Transkription, MCP-Einrichtung und automatischer Scheduler sind in der Oberfläche sichtbar, aber
+bewusst noch inaktiv und folgen in späteren Schnitten.
 
 ## Architektur (Module)
 
@@ -28,9 +31,11 @@ Scaffold + kanonische Spezifikation vorhanden; Implementierung der App-Shell/GUI
 | LearnWeb Core | `src/learnweb-core/` | Login, Session, Kursliste/-struktur, Aktivitätsparser |
 | Sync Engine | `src/sync-engine/` | Auswahl auswerten, Jobs, Downloads, Retry, SQLite-Status |
 | Local Library | `src/local-library/` | Dateipfade, Hashing/Dedupe, lokale Bibliothek |
-| MCP-Modul | `src/mcp/` | optionaler, read-only MCP-Connector für Claude/Codex |
+| Datenlayer | `src/db/` | SQLite-Schema, Migrationen und Repositories |
+| App Shell | `src/main/`, `src/preload/` | Electron-Lifecycle, Statusbar, Fenster und IPC |
+| Dashboard | `src/renderer/` | React-Setup-Wizard und Dashboard |
+| MCP-Modul | `src/mcp/` | späterer optionaler, read-only MCP-Connector für Claude/Codex |
 | Transcription Worker | `transcription-worker/` | isolierter Python-Worker, Aufzeichnung -> Markdown |
-| App Shell / GUI | -- | noch nicht gescaffoldet (Tech-Entscheidung offen) |
 
 Wiederverwendbare Logik (read-only Referenzen): `AgentTools/tbmn-learnweb-connector` (TS: Session/Cookie/Parser/MCP), `learnweb_sync` (Python: State/Dedupe/Transkription).
 
@@ -44,5 +49,8 @@ Wiederverwendbare Logik (read-only Referenzen): `AgentTools/tbmn-learnweb-connec
 | lint | `npm run lint` |
 | typecheck | `npm run typecheck` |
 | build | `npm run build` |
+| SQLite für Electron bauen | `npm run rebuild:electron` |
+| SQLite für Node-Tests zurückbauen | `npm run rebuild:node` |
 
-Dependencies werden erst nach expliziter Freigabe installiert.
+`better-sqlite3` ist ein natives Modul. Vor `npm run dev` muss es für Electron gebaut sein;
+für direkte Node-Tests anschließend bei Bedarf wieder mit `npm run rebuild:node`.

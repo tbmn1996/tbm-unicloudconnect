@@ -6,7 +6,7 @@ Dieses Dokument beschreibt die interne Modularchitektur, das Domänenmodell und 
 
 ## App-Modell & UI-Struktur
 
-Die App läuft als hybride Desktop-Anwendung mit zwei Hauptkomponenten:
+Die App läuft als Electron-Desktop-Anwendung mit zwei Hauptkomponenten:
 
 ```
 [ macOS Menüleisten-Icon (Statusbar) ]
@@ -31,12 +31,12 @@ Die App läuft als hybride Desktop-Anwendung mit zwei Hauptkomponenten:
 Die Funktionalität ist in sechs strikt getrennte TypeScript-Module und einen isolierten Python-Worker aufgeteilt.
 
 ### 1. macOS App Shell
-* **Dateipfad-Scaffold:** `src/index.ts` (Haupt-Einstiegspunkt)
+* **Dateipfade:** `src/main/` (Hauptprozess), `src/preload/` (IPC-Brücke), `src/renderer/` (React)
 * **Verantwortlichkeiten:**
   * Initialisierung des Menüleisten-Icons in der macOS-Statusbar.
   * Steuerung des App-Lifecycles (Starten, Schließen, Hintergrundbetrieb).
   * Fenster-Management (Erzeugen und Fokussieren des Dashboard-Fensters).
-  * Registrierung als macOS-Anmeldeobjekt ("Beim Login starten").
+  * Registrierung als macOS-Anmeldeobjekt (späterer Schnitt).
 
 ### 2. LearnWeb Core
 * **Dateipfad-Scaffold:** [src/learnweb-core/index.ts](../src/learnweb-core/index.ts)

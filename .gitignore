@@ -28,6 +28,11 @@ node_modules/
 coverage/
 *.tsbuildinfo
 
+# Electron / electron-vite build output
+out/
+.vite/
+release/
+
 # OS and editor
 .DS_Store
 .idea/
