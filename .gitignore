@@ -1,0 +1,40 @@
+# Local secrets and overrides
+.env
+.env.*
+!.env.example
+**/settings.local.json
+*credentials*.json
+*authorized_user*.json
+*access_token*.json
+*refresh_token*.json
+
+# Provider link state
+.vercel/
+.railway/
+.supabase/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# JavaScript / TypeScript
+node_modules/
+.next/
+coverage/
+*.tsbuildinfo
+
+# OS and editor
+.DS_Store
+.idea/
+.vscode/
+
+# Graphify: keep only portable core artifacts
+graphify-out/*
+!graphify-out/graph.json
+!graphify-out/GRAPH_REPORT.md
+!graphify-out/manifest.json

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "transcription-worker"
+version = "0.1.0"
+description = "Isolierter lokaler Transkriptions-Worker (Audio/Video aus LearnWeb-Aufzeichnungen -> Markdown), per Subprocess aus tbm-unicloudconnect aufgerufen."
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+transcription_worker = "transcription_worker.main:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
