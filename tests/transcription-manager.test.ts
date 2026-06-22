@@ -172,8 +172,10 @@ test('TranscriptionManager meldet Fortschritt beim Scannen und beim Download', a
     // Scan-Fortschritt prüfen
     const scanStatuses = statuses.filter(s => s.phase === 'scanning');
     assert.ok(scanStatuses.length > 0);
-    assert.deepEqual(scanStatuses[0].progress, { done: 0, total: 1 });
-    assert.match(scanStatuses[0].message, /Softwaretechnik/);
+    const firstScan = scanStatuses[0];
+    assert.ok(firstScan);
+    assert.deepEqual(firstScan.progress, { done: 0, total: 1 });
+    assert.match(firstScan.message ?? '', /Softwaretechnik/);
 
     // Enqueue und verarbeiten
     manager.enqueue([candidates[0]!.recordingKey]);
@@ -182,8 +184,10 @@ test('TranscriptionManager meldet Fortschritt beim Scannen und beim Download', a
     // Download-Fortschritt prüfen
     const downloadStatuses = statuses.filter(s => s.phase === 'downloading' && s.progress !== undefined);
     assert.ok(downloadStatuses.length > 0);
-    assert.deepEqual(downloadStatuses[0].progress, { done: 50 * 1024 * 1024, total: 100 * 1024 * 1024 });
-    assert.match(downloadStatuses[0].message, /50.0 MB von 100.0 MB/);
+    const firstDownload = downloadStatuses[0];
+    assert.ok(firstDownload);
+    assert.deepEqual(firstDownload.progress, { done: 50 * 1024 * 1024, total: 100 * 1024 * 1024 });
+    assert.match(firstDownload.message ?? '', /50.0 MB von 100.0 MB/);
   } finally {
     f.cleanup();
   }

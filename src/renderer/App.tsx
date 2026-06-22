@@ -756,7 +756,13 @@ function TranscriptionPanel(props: {
           </button>
         ) : (
           <button className="button primary" type="button" disabled={props.busy || counts.waiting === 0} onClick={() => void props.startTranscriptionQueue()}>
-           {props.transcriptionStatus.phase !== 'idle' && (
+            Queue starten
+          </button>
+        )}
+      </div>
+    </div>
+
+    {props.transcriptionStatus.phase !== 'idle' && (
       <div className="notice purple" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
           <span>{props.transcriptionStatus.message ?? props.transcriptionStatus.phase}</span>

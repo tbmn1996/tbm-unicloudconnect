@@ -116,7 +116,7 @@ export class TranscriptionManager {
     this.phase = 'scanning';
     const courses = this.options.repos.courses.getSelected();
     const total = courses.length;
-    if (total > 0) {
+    if (total > 0 && courses[0]) {
       this.progress = { done: 0, total };
       this.message = `Ausgewählte Kurse werden nach Aufzeichnungen durchsucht: "${courses[0].fullname}" (1/${total})`;
     } else {
