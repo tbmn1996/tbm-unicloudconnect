@@ -119,15 +119,23 @@ export class TranscriptionManager {
     try {
       const client = new LearnwebClient(await this.options.getSession());
       const candidates: RecordingCandidate[] = [];
+      const failedCourseIds: number[] = [];
       for (const course of this.options.repos.courses.getSelected()) {
-        const activities = await client.listActivities(course.courseId);
-        this.options.repos.activities.upsertMany(activities);
-        candidates.push(...await client.scanRecordings(activities));
+        try {
+          const activities = await client.listActivities(course.courseId);
+          this.options.repos.activities.upsertMany(activities);
+          candidates.push(...await client.scanRecordings(activities));
+        } catch (error) {
+          failedCourseIds.push(course.courseId);
+          console.error(`[transcription] Aufzeichnungs-Scan für Kurs ${course.courseId} fehlgeschlagen:`, error);
+        }
       }
       this.candidates.clear();
       for (const candidate of candidates) this.candidates.set(candidate.recordingKey, candidate);
       this.phase = 'idle';
-      this.message = `${this.candidates.size} Aufzeichnungen gefunden.`;
+      this.message = failedCourseIds.length === 0
+        ? `${this.candidates.size} Aufzeichnungen gefunden.`
+        : `${this.candidates.size} Aufzeichnungen gefunden. ${failedCourseIds.length} Kurs(e) konnten nicht durchsucht werden.`;
       return [...this.candidates.values()];
     } finally {
       if (this.phase === 'scanning') this.phase = 'idle';

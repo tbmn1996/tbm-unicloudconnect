@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { openDatabase } from '../db/db';
 import { createRepos, type Repos } from '../db/repos';
-import { getPassword, KEYCHAIN_SERVICE, setCredential } from '../keychain/keychain';
+import { deleteCredential, getPassword, KEYCHAIN_SERVICE, setCredential } from '../keychain/keychain';
 import { LearnwebClient } from '../learnweb-core/client';
 import { LearnwebSession } from '../learnweb-core/session';
 import type { AppState, LoginResult, SyncStatus } from '../shared/domain';
@@ -57,7 +57,10 @@ export class AppRuntime {
       command: options.mcpCommand ?? process.execPath,
       args: [options.mcpEntryPath ?? join(process.cwd(), 'out', 'main', 'mcp.js')],
     });
-    void this.mcp.restore().catch(() => this.repos.mcp.set(false));
+    void this.mcp.restore().catch((error) => {
+      console.error('[mcp] Automatischer MCP-Restore beim App-Start fehlgeschlagen:', error);
+      this.repos.mcp.set(false);
+    });
   }
 
   getLibraryPath(): string | null {
@@ -89,7 +92,12 @@ export class AppRuntime {
   async saveAndVerifyCredentials(username: string, password: string): Promise<LoginResult> {
     const candidate = new LearnwebSession(username, password);
     await candidate.verifyCredentials();
+    const previousCredential = this.repos.credentials.get();
     await setCredential(username, password);
+    if (previousCredential && previousCredential.accountName !== username) {
+      await deleteCredential(previousCredential.accountName, previousCredential.serviceName);
+      this.clearAccountData();
+    }
     this.repos.credentials.set({ serviceName: KEYCHAIN_SERVICE, accountName: username });
     const credential = this.repos.credentials.get();
     if (credential) this.repos.credentials.markVerified(credential.id);
@@ -115,6 +123,27 @@ export class AppRuntime {
     this.session = new LearnwebSession(credential.accountName, password);
     this.sessionAccount = credential.accountName;
     return this.session;
+  }
+
+  async clearCredentials(): Promise<void> {
+    const credential = this.repos.credentials.get();
+    if (credential) {
+      await deleteCredential(credential.accountName, credential.serviceName);
+    }
+    this.repos.credentials.clear();
+    this.clearAccountData();
+    this.session = null;
+    this.sessionAccount = null;
+    if (this.repos.mcp.get().enabled) {
+      await this.mcp.setEnabled(false);
+    }
+  }
+
+  private clearAccountData(): void {
+    this.db.transaction(() => {
+      this.repos.courses.clear();
+      this.repos.syncRuns.clear();
+    })();
   }
 
   async runAutoTranscription(): Promise<void> {

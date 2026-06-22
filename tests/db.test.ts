@@ -98,3 +98,33 @@ test('SQLite-CHECK-Constraints weisen ungültige Statuswerte ab', () => {
     db.close();
   }
 });
+
+test('Kontodaten werden per Kurs-Cascade gelöscht, lokale Einstellungen bleiben erhalten', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const repos = createRepos(db);
+    repos.profiles.create('Thomas', '/tmp/library');
+    repos.settings.set('default_library_path', '/tmp/library');
+    repos.courses.upsertMany([{ courseId: 42, fullname: 'Testkurs' }]);
+    repos.activities.upsertMany([{ cmid: 100, courseId: 42, modtype: 'resource', name: 'Skript' }]);
+    db.prepare("INSERT INTO file_assets (activity_cmid, course_id, source_url, filename_original, filename_local, local_path) VALUES (100, 42, 'https://example.invalid/file', 'a.pdf', 'a.pdf', '/tmp/a.pdf')").run();
+    db.prepare("INSERT INTO transcript_jobs (course_id, activity_cmid, source_url) VALUES (42, 100, 'https://example.invalid/recording')").run();
+    db.prepare("INSERT INTO selection_rules (course_id, scope) VALUES (42, 'course')").run();
+    db.prepare("INSERT INTO download_jobs (course_id, activity_cmid, source_url) VALUES (42, 100, 'https://example.invalid/file')").run();
+    repos.syncRuns.start('manual');
+
+    db.transaction(() => {
+      repos.courses.clear();
+      repos.syncRuns.clear();
+    })();
+
+    for (const table of ['courses', 'activities', 'file_assets', 'transcript_jobs', 'selection_rules', 'download_jobs', 'sync_runs']) {
+      const row = db.prepare(`SELECT count(*) AS count FROM ${table}`).get() as { count: number };
+      assert.equal(row.count, 0, `${table} wurde nicht geleert`);
+    }
+    assert.equal(repos.settings.get('default_library_path'), '/tmp/library');
+    assert.equal(repos.profiles.get()?.displayName, 'Thomas');
+  } finally {
+    db.close();
+  }
+});

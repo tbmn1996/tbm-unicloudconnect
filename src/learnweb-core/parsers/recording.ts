@@ -14,6 +14,14 @@ export interface RecordingParseContext {
   sectionIndex?: number | null;
 }
 
+export interface OpencastEpisode {
+  episodeId: string | null;
+  title: string | null;
+  mediaUrl: string | null;
+  recordedAt: string | null;
+  detailQuery: string | null;
+}
+
 /**
  * Erkannte Opencast-Episode aus HTML-Markup.
  */
@@ -44,8 +52,105 @@ interface MediaCandidate {
 /**
  * Extrahiert stabile Recording-Keys basierend auf dem Quelltyp.
  */
-function hashUrl(url: string): string {
+export function hashUrl(url: string): string {
   return crypto.createHash('sha256').update(url).digest('hex').slice(0, 16);
+}
+
+export function parseOpencastEpisodes(html: string, baseUrl: string): OpencastEpisode[] {
+  if (!html) return [];
+
+  const windowMatch = html.match(/window\.episode\s*=\s*(\{.*?\})\s*;/s);
+  if (windowMatch?.[1]) {
+    const rawEpisode = windowMatch[1];
+    const mediaUrl = extractFirstMp4Url(rawEpisode, baseUrl)
+      ?? extractFirstMp4Url(html, baseUrl);
+    if (mediaUrl) {
+      const episode = parseJsonObject(rawEpisode);
+      const metadata = isRecord(episode?.metadata) ? episode.metadata : null;
+      return [{
+        episodeId: stringValue(metadata?.id) ?? stringValue(episode?.id)?.toLowerCase() ?? null,
+        title: stringValue(metadata?.title) ?? stringValue(episode?.title) ?? null,
+        mediaUrl,
+        recordedAt: findRecordedAt(episode, rawEpisode),
+        detailQuery: null,
+      }].map((item) => ({
+        ...item,
+        episodeId: item.episodeId?.toLowerCase() ?? null,
+      }));
+    }
+  }
+
+  const $ = cheerio.load(html);
+  const legacy: OpencastEpisode[] = [];
+  const seen = new Set<string>();
+  $('a[href*="/mod/opencast/view.php"]').each((_index, element) => {
+    const href = ($(element).attr('href') ?? '').replaceAll('&amp;', '&');
+    const match = href.match(/[?&]e=([0-9a-f-]{36})/i);
+    if (!match?.[1]) return;
+    const text = normalizeText($(element).text());
+    if (/^(?:de|en)$/i.test(text)) return;
+    const episodeId = match[1].toLowerCase();
+    if (seen.has(episodeId)) return;
+    seen.add(episodeId);
+    legacy.push({
+      episodeId,
+      title: text || null,
+      mediaUrl: null,
+      recordedAt: null,
+      detailQuery: `&e=${episodeId}`,
+    });
+  });
+  if (legacy.length > 0) return legacy;
+
+  const mediaUrl = extractFirstMp4Url(html, baseUrl);
+  return mediaUrl ? [{
+    episodeId: null,
+    title: null,
+    mediaUrl,
+    recordedAt: findRecordedAt(null, html),
+    detailQuery: null,
+  }] : [];
+}
+
+function extractFirstMp4Url(text: string, baseUrl: string): string | null {
+  const match = text.match(/https?:\\?\/\\?\/[^\s"'<>]+?\.mp4(?:[?#][^\s"'<>]*)?/i);
+  if (!match?.[0]) return null;
+  return absoluteUrl(baseUrl, match[0].replaceAll('\\/', '/'));
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function findRecordedAt(episode: Record<string, unknown> | null, rawText: string): string | null {
+  const metadata = isRecord(episode?.metadata) ? episode.metadata : null;
+  const candidates = [metadata?.created, metadata?.start, episode?.created, episode?.start];
+  for (const candidate of candidates) {
+    const normalized = normalizeRecordedAt(candidate);
+    if (normalized) return normalized;
+  }
+  const rawMatch = rawText.match(/"(?:created|start)"\s*:\s*"([^"]+)"/);
+  return normalizeRecordedAt(rawMatch?.[1]);
+}
+
+function normalizeRecordedAt(value: unknown): string | null {
+  if ((typeof value !== 'string' || !value.trim()) && typeof value !== 'number') return null;
+  const timestamp = typeof value === 'number' ? value * 1_000 : value;
+  const parsed = new Date(timestamp);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 /**

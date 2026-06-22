@@ -11,8 +11,12 @@ export interface ParsedCourse {
 export function parseCourses(html: string, baseUrl: string): ParsedCourse[] {
   const $ = cheerio.load(html);
   const courses = new Map<number, ParsedCourse & { score: number }>();
+  const navigationLinks = $('li.sub-sub-menu-item a[href*="/course/view.php?id="]');
+  const links = navigationLinks.length > 0
+    ? navigationLinks
+    : $('a[href*="/course/view.php?id="]');
 
-  $('a[href*="/course/view.php?id="]').each((_, element) => {
+  links.each((_, element) => {
     const href = $(element).attr('href');
     const match = href?.match(/[?&]id=(\d+)/);
     if (!href || !match?.[1]) return;
@@ -22,7 +26,9 @@ export function parseCourses(html: string, baseUrl: string): ParsedCourse[] {
     const candidates = [
       title ? { name: title, score: scoreName(title, true) } : null,
       text ? { name: text, score: scoreName(text, false) } : null,
-    ].filter((candidate): candidate is { name: string; score: number } => candidate !== null);
+    ].filter((candidate): candidate is { name: string; score: number } => (
+      candidate !== null && isPlausibleCourseName(candidate.name)
+    ));
     const candidate = candidates.sort((a, b) => b.score - a.score)[0];
     if (!candidate || candidate.score <= (courses.get(courseId)?.score ?? -1)) return;
     courses.set(courseId, {
@@ -35,6 +41,13 @@ export function parseCourses(html: string, baseUrl: string): ParsedCourse[] {
   });
 
   return Array.from(courses.values(), ({ score: _score, ...course }) => course);
+}
+
+function isPlausibleCourseName(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length <= 2) return false;
+  if (new Set(['hier', 'here', 'link']).has(normalized)) return false;
+  return !/^(?:https?:\/\/|www\.)\S+$/i.test(normalized);
 }
 
 export function extractSemester(value: string): string | null {

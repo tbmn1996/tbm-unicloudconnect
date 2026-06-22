@@ -33,6 +33,9 @@ export function createDevApi(): UniCloudApi {
       return { ok: true };
     },
     verifyLogin: async () => ({ ok: state.hasCredentials, message: state.hasCredentials ? undefined : 'Noch keine Zugangsdaten.' }),
+    logout: async () => {
+      state.hasCredentials = false;
+    },
     chooseLibraryFolder: async () => '/Users/demo/UniCloudConnect',
     checkLibraryPath: async (path) => ({ ok: Boolean(path), exists: Boolean(path), writable: Boolean(path) }),
     setLibraryPath: async (path) => {

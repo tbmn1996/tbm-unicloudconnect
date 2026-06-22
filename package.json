@@ -10,6 +10,7 @@
     "node": ">=20.19"
   },
   "scripts": {
+    "predev": "electron-rebuild -w better-sqlite3",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",

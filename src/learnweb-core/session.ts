@@ -26,7 +26,7 @@ import { LEARNWEB_BASE_URL } from './constants';
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)';
 const INTER_CALL_DELAY_MS = 150;
 const INTRA_CALL_CONCURRENCY = 3;
-const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 30000;
 
 export class LearnwebAuthError extends Error {
   constructor(message = 'LearnWeb-Login fehlgeschlagen (Zugangsdaten prüfen).') {
@@ -127,8 +127,8 @@ export class LearnwebSession {
     path: string,
     options: { allowRedirects?: boolean; timeoutMs?: number } = {},
   ): Promise<LearnwebResponse> {
-    await this.throttleInterCall();
     await this.acquireSemaphore();
+    await this.throttleInterCall();
     try {
       await this.ensureLoggedIn();
       let resp = await this.rawGet(path, options.timeoutMs);
@@ -160,8 +160,8 @@ export class LearnwebSession {
     const maxBytes = options.maxBytes ?? 50 * 1024 * 1024;
     const timeoutMs = options.timeoutMs ?? 120_000;
 
-    await this.throttleInterCall();
     await this.acquireSemaphore();
+    await this.throttleInterCall();
     try {
       await this.ensureLoggedIn();
       let resp = await this.rawDownload(url, maxBytes, timeoutMs);
@@ -191,8 +191,8 @@ export class LearnwebSession {
   ): Promise<DownloadToPathResult> {
     const maxBytes = options.maxBytes ?? 2 * 1024 * 1024 * 1024;
     const timeoutMs = options.timeoutMs ?? 30 * 60_000;
-    await this.throttleInterCall();
     await this.acquireSemaphore();
+    await this.throttleInterCall();
     try {
       await this.ensureLoggedIn();
       let response = await this.rawStreamDownload(url, timeoutMs);
@@ -341,39 +341,42 @@ export class LearnwebSession {
   }
 
   private async doLogin(): Promise<void> {
-    // Schritt 1: Login-Seite holen, logintoken extrahieren.
-    const getResp = await this.client.get('/login/index.php');
-    if (getResp.status < 200 || getResp.status >= 300) {
-      throw new LearnwebAuthError('LearnWeb-Login-Seite nicht erreichbar.');
+    try {
+      const getResp = await this.client.get('/login/index.php');
+      if (getResp.status < 200 || getResp.status >= 300) {
+        throw new LearnwebAuthError('LearnWeb-Login-Seite nicht erreichbar.');
+      }
+      const html = typeof getResp.data === 'string' ? getResp.data : String(getResp.data ?? '');
+      const $ = cheerio.load(html);
+      const logintoken = $('input[name="logintoken"]').attr('value') ?? '';
+
+      const postResp = await this.postForm('/login/index.php', {
+        username: this.username,
+        password: this.password,
+        logintoken,
+        anchor: '',
+      });
+      if (postResp.status < 200 || postResp.status >= 400) {
+        throw new LearnwebAuthError();
+      }
+
+      const postBody = typeof postResp.data === 'string' ? postResp.data : String(postResp.data ?? '');
+      const location = (postResp.headers?.['location'] as string | undefined) ?? '';
+      const locationIsLoginForm = location.includes('/login/index.php') && !location.includes('testsession=');
+      const stillOnLogin = locationIsLoginForm || postBody.includes('loginerrormessage');
+
+      if (stillOnLogin) {
+        throw new LearnwebAuthError();
+      }
+
+      await this.verifyAuthenticatedSession();
+    } catch (error) {
+      if (isAxiosTimeoutError(error)) throw new LearnwebTimeoutError();
+      if (error instanceof LearnwebAuthError || error instanceof LearnwebTimeoutError) throw error;
+      throw new LearnwebAuthError(
+        error instanceof Error ? error.message : 'LearnWeb-Login fehlgeschlagen.',
+      );
     }
-    const html = typeof getResp.data === 'string' ? getResp.data : String(getResp.data ?? '');
-    const $ = cheerio.load(html);
-    const logintoken = $('input[name="logintoken"]').attr('value') ?? '';
-
-    // Schritt 2: POST mit Credentials + logintoken.
-    const postResp = await this.postForm('/login/index.php', {
-      username: this.username,
-      password: this.password,
-      logintoken,
-      anchor: '',
-    });
-    if (postResp.status < 200 || postResp.status >= 400) {
-      throw new LearnwebAuthError();
-    }
-
-    // Münster-Moodle nutzt einen testsession-Bounce; das ist KEIN Fehler.
-    // Misserfolg: Body enthält "loginerrormessage" oder Location zeigt ohne
-    // testsession-Parameter zurück auf die Login-Form.
-    const postBody = typeof postResp.data === 'string' ? postResp.data : String(postResp.data ?? '');
-    const location = (postResp.headers?.['location'] as string | undefined) ?? '';
-    const locationIsLoginForm = location.includes('/login/index.php') && !location.includes('testsession=');
-    const stillOnLogin = locationIsLoginForm || postBody.includes('loginerrormessage');
-
-    if (stillOnLogin) {
-      throw new LearnwebAuthError(); // generisch — keine Credentials leaken
-    }
-
-    await this.verifyAuthenticatedSession();
   }
 
   private async verifyAuthenticatedSession(): Promise<void> {

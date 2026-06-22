@@ -149,6 +149,7 @@ export function App(): React.JSX.Element {
       if (!result.ok) throw new Error(result.message ?? 'Login fehlgeschlagen.');
       setLoginVerified(true);
       setPassword('');
+      setAppState(await window.api.getAppState());
       await refreshCourses();
     } catch (error) {
       setLoginVerified(false);
@@ -314,10 +315,29 @@ export function App(): React.JSX.Element {
     setMcpStatus(await window.api.regenerateMcpToken());
   }
 
+  async function handleLogout(): Promise<void> {
+    if (!confirm('Möchtest du dich wirklich abmelden? Deine Zugangsdaten werden gelöscht.')) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await window.api.logout();
+      setAppState(await window.api.getAppState());
+      setLoginVerified(false);
+      setMcpStatus(EMPTY_MCP);
+      setUsername('');
+      setPassword('');
+      setStep(2);
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) return <div className="loading">UniCloudConnect wird geladen …</div>;
   if (!appState) return <div className="loading error">Die App konnte nicht initialisiert werden.</div>;
 
-  if (!appState.isSetupComplete) {
+  if (!appState.isSetupComplete || !appState.hasCredentials) {
     return (
       <div className="setup-shell">
         <aside className="setup-sidebar">
@@ -410,6 +430,7 @@ export function App(): React.JSX.Element {
       mcpStatus={mcpStatus}
       setMcpEnabled={setMcpEnabled}
       regenerateMcpToken={regenerateMcpToken}
+      handleLogout={handleLogout}
     />
   );
 }
@@ -552,6 +573,7 @@ function Dashboard(props: {
   mcpStatus: McpRuntimeStatus;
   setMcpEnabled(enabled: boolean): Promise<void>;
   regenerateMcpToken(): Promise<void>;
+  handleLogout(): Promise<void>;
 }): React.JSX.Element {
   const selected = props.courses.filter((course) => course.isSelected).length;
   return <div className="dashboard-shell">
@@ -585,7 +607,7 @@ function Dashboard(props: {
         {props.tab === 'courses' && <><div className="split-heading"><p>{selected} Kurse werden synchronisiert.</p><button className="button secondary" type="button" disabled={props.busy} onClick={() => void props.refreshCourses()}>Aktualisieren</button></div><CourseList courses={props.courses} toggleCourse={props.toggleCourse} /></>}
         {props.tab === 'transcripts' && <TranscriptionPanel {...props} />}
         {props.tab === 'library' && (props.files.length ? <div className="file-list">{props.files.map((file) => <div key={file.id}><div><strong>{file.filenameLocal}</strong><span>{file.localPath}</span></div><small>{formatBytes(file.sizeBytes)} · {file.status}</small></div>)}</div> : <EmptyState title="Noch keine Dateien" text="Starte den ersten Sync, um die lokale Bibliothek zu füllen." />)}
-        {props.tab === 'settings' && <div className="panel settings"><h3>Speicherort</h3><p>{props.libraryPath}</p><h3>Synchronisation</h3><p>Manuell über Dashboard oder Statusbar.</p><h3>Transkription</h3><p>Modus: {props.transcriptionSettings.mode} · Modell: {props.transcriptionSettings.model} · Worker: {props.workerStatus.installed ? 'bereit' : 'nicht eingerichtet'}</p>{!props.workerStatus.installed && <button className="button secondary" type="button" onClick={() => void props.setupWorker()}>Worker einrichten</button>}<h3>MCP</h3><button className={props.mcpStatus.enabled ? 'button secondary' : 'button primary'} type="button" disabled={props.busy} onClick={() => void props.setMcpEnabled(!props.mcpStatus.enabled)}>{props.mcpStatus.enabled ? 'MCP deaktivieren' : 'MCP aktivieren'}</button>{props.mcpStatus.enabled && <><McpConnectionDetails status={props.mcpStatus} /><button className="text-button" type="button" onClick={() => void props.regenerateMcpToken()}>Bearer-Token erneuern</button></>}</div>}
+        {props.tab === 'settings' && <div className="panel settings"><h3>Speicherort</h3><p>{props.libraryPath}</p><h3>Synchronisation</h3><p>Manuell über Dashboard oder Statusbar.</p><h3>Transkription</h3><p>Modus: {props.transcriptionSettings.mode} · Modell: {props.transcriptionSettings.model} · Worker: {props.workerStatus.installed ? 'bereit' : 'nicht eingerichtet'}</p>{!props.workerStatus.installed && <button className="button secondary" type="button" onClick={() => void props.setupWorker()}>Worker einrichten</button>}<h3>MCP</h3><button className={props.mcpStatus.enabled ? 'button secondary' : 'button primary'} type="button" disabled={props.busy} onClick={() => void props.setMcpEnabled(!props.mcpStatus.enabled)}>{props.mcpStatus.enabled ? 'MCP deaktivieren' : 'MCP aktivieren'}</button>{props.mcpStatus.enabled && <><McpConnectionDetails status={props.mcpStatus} /><button className="text-button" type="button" onClick={() => void props.regenerateMcpToken()}>Bearer-Token erneuern</button></>}<h3>Konto</h3><button className="button danger" type="button" disabled={props.busy} onClick={() => void props.handleLogout()}>Abmelden</button><p><small>Entfernt die gespeicherten Zugangsdaten aus der Keychain und deaktiviert MCP.</small></p></div>}
       </section>
     </main>
   </div>;

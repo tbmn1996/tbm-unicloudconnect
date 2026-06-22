@@ -20,6 +20,7 @@ const api: UniCloudApi = {
   hasCredentials: () => ipcRenderer.invoke(IPC.hasCredentials),
   saveCredentials: (input) => ipcRenderer.invoke(IPC.saveCredentials, input),
   verifyLogin: () => ipcRenderer.invoke(IPC.verifyLogin),
+  logout: () => ipcRenderer.invoke(IPC.logout),
 
   // Bibliotheks-Ordner
   chooseLibraryFolder: () => ipcRenderer.invoke(IPC.chooseLibraryFolder),

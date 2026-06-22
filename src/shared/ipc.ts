@@ -36,6 +36,7 @@ export const IPC = {
   saveCredentials: 'auth:saveCredentials',
   verifyLogin: 'auth:verifyLogin',
   hasCredentials: 'auth:hasCredentials',
+  logout: 'auth:logout',
   // Bibliotheks-Ordner
   chooseLibraryFolder: 'library:chooseFolder',
   checkLibraryPath: 'library:checkPath',
@@ -91,6 +92,8 @@ export interface UniCloudApi {
   saveCredentials(input: { username: string; password: string }): Promise<LoginResult>;
   /** Prüft die gespeicherten Credentials gegen das LearnWeb (echter Login-Versuch). */
   verifyLogin(): Promise<LoginResult>;
+  /** Löscht Credentials aus Keychain + DB, deaktiviert MCP, setzt Session zurück. */
+  logout(): Promise<void>;
 
   // --- Bibliotheks-Ordner ---
   chooseLibraryFolder(): Promise<string | null>;

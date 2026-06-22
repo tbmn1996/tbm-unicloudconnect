@@ -1,13 +1,58 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseRecordingsFromHtml } from '../src/learnweb-core/parsers/recording';
+import { parseOpencastEpisodes, parseRecordingsFromHtml } from '../src/learnweb-core/parsers/recording';
 
 const BASE_URL = 'https://learnweb.example/moodle';
 
 // ============================================================================
 // OPENCAST / PAELLA TESTS
 // ============================================================================
+
+test('Münster-Opencast: parst window.episode mit escaped MP4-URL', () => {
+  const html = String.raw`
+    <script>
+      window.episode = {
+        "metadata": {
+          "id": "ABCDEFAB-1234-5678-90AB-ABCDEFABCDEF",
+          "title": "Vorlesung 4",
+          "created": "2026-06-20T10:15:00Z"
+        },
+        "tracks": [{"url": "https:\/\/video.example\/lecture\/concat.mp4"}]
+      };
+    </script>`;
+
+  assert.deepEqual(parseOpencastEpisodes(html, BASE_URL), [{
+    episodeId: 'abcdefab-1234-5678-90ab-abcdefabcdef',
+    title: 'Vorlesung 4',
+    mediaUrl: 'https://video.example/lecture/concat.mp4',
+    recordedAt: '2026-06-20T10:15:00.000Z',
+    detailQuery: null,
+  }]);
+});
+
+test('Münster-Opencast: parst Legacy-Liste, filtert Sprachlinks und dedupliziert', () => {
+  const firstId = '11111111-1111-1111-1111-111111111111';
+  const secondId = '22222222-2222-2222-2222-222222222222';
+  const html = `
+    <a href="/mod/opencast/view.php?id=42&amp;e=${firstId}">Vorlesung 1</a>
+    <a href="/mod/opencast/view.php?id=42&amp;e=${firstId}">de</a>
+    <a href="/mod/opencast/view.php?id=42&amp;e=${firstId}">Duplikat</a>
+    <a href="/mod/opencast/view.php?id=42&amp;e=${secondId}">Vorlesung 2</a>`;
+
+  const episodes = parseOpencastEpisodes(html, BASE_URL);
+
+  assert.deepEqual(episodes.map((episode) => episode.episodeId), [firstId, secondId]);
+  assert.deepEqual(episodes.map((episode) => episode.detailQuery), [
+    `&e=${firstId}`,
+    `&e=${secondId}`,
+  ]);
+  assert.deepEqual(episodes.map((episode) => episode.title), ['Vorlesung 1', 'Vorlesung 2']);
+});
+
+test('Münster-Opencast: leeres HTML liefert keine Episoden', () => {
+  assert.deepEqual(parseOpencastEpisodes('', BASE_URL), []);
+});
 
 test('Opencast: erkennt LTI-iframe mit play/<uuid> Format', () => {
   const html = `

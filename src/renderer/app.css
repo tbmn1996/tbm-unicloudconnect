@@ -33,6 +33,7 @@ input:focus { border-color: #0a84ff; box-shadow: 0 0 0 3px rgba(10,132,255,.13);
 .button:disabled { opacity: .48; cursor: default; }
 .button.primary { color: #fff; background: #0a84ff; box-shadow: 0 1px 3px rgba(10,132,255,.28); }
 .button.secondary { color: #1d1d1f; background: #fff; border: 1px solid #d2d2d6; box-shadow: none; }
+.button.danger { color: #fff; background: #d23f37; box-shadow: 0 1px 3px rgba(210,63,55,.28); }
 .button.wide { width: 100%; margin-top: 20px; padding: 13px; }
 .text-button { color: #0a84ff; border: 0; background: transparent; padding: 0; cursor: pointer; }
 .notice { margin-top: 16px; padding: 12px 14px; border: 1px solid #e5e5e7; border-radius: 9px; color: #626267; background: #fafafa; font-size: 13px; line-height: 1.45; }

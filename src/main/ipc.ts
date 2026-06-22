@@ -32,6 +32,7 @@ export function registerIpcHandlers(runtime: AppRuntime): void {
       return { ok: false, message: publicError(error, 'LearnWeb-Login fehlgeschlagen.') };
     }
   });
+  ipcMain.handle(IPC.logout, () => runtime.clearCredentials());
 
   ipcMain.handle(IPC.chooseLibraryFolder, async () => {
     const result = await dialog.showOpenDialog({

@@ -106,6 +106,10 @@ export function makeCredentialRefsRepo(db: AppDatabase) {
     markVerified(id: number): void {
       setVerified.run(nowIso(), id);
     },
+    /** Löscht alle Credential-Referenzen (Logout). */
+    clear(): void {
+      clear.run();
+    },
   };
 }
 
@@ -125,6 +129,7 @@ export function makeCoursesRepo(db: AppDatabase) {
   const all = db.prepare('SELECT * FROM courses ORDER BY fullname');
   const selected = db.prepare('SELECT * FROM courses WHERE is_selected = 1 ORDER BY fullname');
   const setSel = db.prepare('UPDATE courses SET is_selected = ? WHERE course_id = ?');
+  const clear = db.prepare('DELETE FROM courses');
 
   const map = (r: Record<string, unknown>): Course => ({
     courseId: r.course_id as number,
@@ -162,6 +167,9 @@ export function makeCoursesRepo(db: AppDatabase) {
     },
     setSelected(courseId: number, isSelected: boolean): void {
       setSel.run(toInt(isSelected), courseId);
+    },
+    clear(): void {
+      clear.run();
     },
   };
 }
@@ -614,6 +622,7 @@ export function makeSyncRunsRepo(db: AppDatabase) {
        errors_count = @errorsCount WHERE id = @id`,
   );
   const last = db.prepare('SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1');
+  const clear = db.prepare('DELETE FROM sync_runs');
 
   const map = (r: Record<string, unknown>): SyncRun => ({
     id: r.id as number,
@@ -649,6 +658,9 @@ export function makeSyncRunsRepo(db: AppDatabase) {
     getLast(): SyncRun | null {
       const row = last.get() as Record<string, unknown> | undefined;
       return row ? map(row) : null;
+    },
+    clear(): void {
+      clear.run();
     },
   };
 }

@@ -5,7 +5,7 @@ import { parseCourseOverview } from './parsers/overview';
 import { parseResourceResponse } from './parsers/resource';
 import { parsePageHtml, type ParsedPage } from './parsers/page';
 import { parseUrlResponse, type ParsedUrlActivity } from './parsers/url';
-import { parseRecordingsFromHtml } from './parsers/recording';
+import { hashUrl, parseOpencastEpisodes, parseRecordingsFromHtml } from './parsers/recording';
 import type { LearnwebSession } from './session';
 
 export interface DownloadTarget {
@@ -93,6 +93,52 @@ export class LearnwebClient {
   async resolveRecordingCandidates(activity: Activity): Promise<RecordingCandidate[]> {
     let htmlContent: string;
     let redirectLocation: string | undefined;
+
+    if (activity.modtype === 'opencast') {
+      const viewPath = `/mod/opencast/view.php?id=${activity.cmid}`;
+      const response = await this.session.get(viewPath);
+      if (response.status < 200 || response.status >= 300) return [];
+      const candidates: RecordingCandidate[] = [];
+
+      for (const episode of parseOpencastEpisodes(response.data, this.session.getBaseUrl())) {
+        let mediaUrl = episode.mediaUrl;
+        let title = episode.title;
+        let recordedAt = episode.recordedAt;
+
+        if (!mediaUrl && episode.detailQuery) {
+          try {
+            const detailResponse = await this.session.get(`${viewPath}${episode.detailQuery}`);
+            if (detailResponse.status < 200 || detailResponse.status >= 300) continue;
+            const detail = parseOpencastEpisodes(
+              detailResponse.data,
+              this.session.getBaseUrl(),
+            )[0];
+            mediaUrl = detail?.mediaUrl ?? null;
+            title = title ?? detail?.title ?? null;
+            recordedAt = recordedAt ?? detail?.recordedAt ?? null;
+          } catch {
+            continue;
+          }
+        }
+
+        if (!mediaUrl) continue;
+        candidates.push({
+          recordingKey: episode.episodeId?.toLowerCase() ?? hashUrl(mediaUrl),
+          courseId: activity.courseId,
+          activityCmid: activity.cmid,
+          title: title ?? activity.name,
+          sourceKind: 'opencast',
+          mediaUrl,
+          needsAuth: true,
+          hasSubtitles: false,
+          sectionName: activity.sectionName,
+          sectionIndex: activity.sectionIndex,
+          recordingDate: recordedAt,
+        });
+      }
+
+      return candidates;
+    }
 
     if (activity.modtype === 'url') {
       // URL-Aktivitäten: externe Links, potentiell zu Streaming-Plattformen
