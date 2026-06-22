@@ -17,8 +17,14 @@ import type {
   FileAsset,
   LibraryPathCheck,
   LoginResult,
+  McpRuntimeStatus,
   McpStatus,
+  RecordingCandidate,
   SyncStatus,
+  TranscriptionSettings,
+  TranscriptionStatus,
+  TranscriptionWorkerStatus,
+  TranscriptJob,
 } from './domain';
 
 /** Kanonische Kanalnamen (ipcRenderer.invoke ↔ ipcMain.handle). */
@@ -48,10 +54,26 @@ export const IPC = {
   // Einstellungen
   getSettings: 'settings:get',
   setSetting: 'settings:set',
-  // MCP (Platzhalter, in diesem Schnitt inaktiv)
+  // Transkription (Strang A)
+  getTranscriptionSettings: 'transcription:getSettings',
+  setTranscriptionSettings: 'transcription:setSettings',
+  getTranscriptionWorkerStatus: 'transcription:getWorkerStatus',
+  setupTranscriptionWorker: 'transcription:setupWorker',
+  scanRecordings: 'transcription:scanRecordings',
+  enqueueTranscriptions: 'transcription:enqueue',
+  getTranscriptJobs: 'transcription:getJobs',
+  startTranscriptionQueue: 'transcription:startQueue',
+  cancelTranscription: 'transcription:cancel',
+  retryTranscription: 'transcription:retry',
+  openTranscript: 'transcription:openTranscript',
+  // MCP (Strang B) — optional, lokal, opt-in
   getMcpStatus: 'mcp:getStatus',
+  getMcpRuntimeStatus: 'mcp:getRuntimeStatus',
+  setMcpEnabled: 'mcp:setEnabled',
+  regenerateMcpToken: 'mcp:regenerateToken',
   // Events Main → Renderer
   evtSyncStatus: 'evt:syncStatus',
+  evtTranscriptionStatus: 'evt:transcriptionStatus',
 } as const;
 
 /**
@@ -92,10 +114,37 @@ export interface UniCloudApi {
   getSettings(): Promise<AppSettings>;
   setSetting(input: { key: string; value: string }): Promise<void>;
 
-  // --- MCP (Platzhalter) ---
+  // --- Transkription (Strang A) ---
+  getTranscriptionSettings(): Promise<TranscriptionSettings>;
+  setTranscriptionSettings(input: TranscriptionSettings): Promise<TranscriptionSettings>;
+  getTranscriptionWorkerStatus(): Promise<TranscriptionWorkerStatus>;
+  /** Richtet die isolierte Worker-Umgebung ein und lädt das gewählte Modell (Fortschritt via Event). */
+  setupTranscriptionWorker(): Promise<TranscriptionWorkerStatus>;
+  /** Scannt ausgewählte Kurse nach transkribierbaren Aufzeichnungen. */
+  scanRecordings(): Promise<RecordingCandidate[]>;
+  /** Reiht die angegebenen Aufzeichnungen idempotent in die Queue ein. */
+  enqueueTranscriptions(input: { recordingKeys: string[] }): Promise<TranscriptJob[]>;
+  getTranscriptJobs(): Promise<TranscriptJob[]>;
+  /** Startet die Abarbeitung der Queue (genau ein aktiver Job). */
+  startTranscriptionQueue(): Promise<void>;
+  /** Bricht den aktiven Job ab und stellt ihn auf 'pending' zurück. */
+  cancelTranscription(): Promise<void>;
+  /** Wiederholt einen fehlgeschlagenen Job. */
+  retryTranscription(input: { jobId: number }): Promise<void>;
+  /** Öffnet das fertige Markdown-Transkript im Finder/Editor. */
+  openTranscript(input: { jobId: number }): Promise<void>;
+
+  // --- MCP (Strang B) ---
   getMcpStatus(): Promise<McpStatus>;
+  getMcpRuntimeStatus(): Promise<McpRuntimeStatus>;
+  /** Aktiviert/deaktiviert den MCP-Zugriff (stdio-Registrierung + lokaler SSE-Server). */
+  setMcpEnabled(input: { enabled: boolean }): Promise<McpRuntimeStatus>;
+  /** Erzeugt ein neues Bearer-Token für den SSE-Endpunkt. */
+  regenerateMcpToken(): Promise<McpRuntimeStatus>;
 
   // --- Events ---
-  /** Abonniert Live-Status-Updates; gibt eine Unsubscribe-Funktion zurück. */
+  /** Abonniert Live-Sync-Status; gibt eine Unsubscribe-Funktion zurück. */
   onSyncStatus(callback: (status: SyncStatus) => void): () => void;
+  /** Abonniert Live-Transkriptions-Status; gibt eine Unsubscribe-Funktion zurück. */
+  onTranscriptionStatus(callback: (status: TranscriptionStatus) => void): () => void;
 }

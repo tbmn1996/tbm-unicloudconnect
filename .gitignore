@@ -37,6 +37,7 @@ release/
 .DS_Store
 .idea/
 .vscode/
+.codex-takeover/
 
 # Graphify: keep only portable core artifacts
 graphify-out/*

@@ -16,6 +16,7 @@ import type {
   FileAsset,
   McpStatus,
   Profile,
+  RecordingSourceKind,
   SelectionRule,
   SyncRun,
   SyncTrigger,
@@ -426,12 +427,48 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
      VALUES (@courseId, @activityCmid, @sourceUrl, @status, @model)`,
   );
   const byStatus = db.prepare('SELECT * FROM transcript_jobs WHERE status = ? ORDER BY id');
+  const claimNextStmt = db.prepare(
+    `SELECT id FROM transcript_jobs WHERE status = 'pending' ORDER BY id LIMIT 1`,
+  );
+  const markClaimedStmt = db.prepare(
+    `UPDATE transcript_jobs SET status = 'claimed', updated_at = datetime('now')
+     WHERE id = ? AND status = 'pending'`,
+  );
   const update = db.prepare(
     `UPDATE transcript_jobs SET status = @status, media_local_path = @mediaLocalPath,
        transcript_local_path = @transcriptLocalPath, model = @model,
        duration_seconds = @durationSeconds, error_code = @errorCode,
        updated_at = datetime('now') WHERE id = @id`,
   );
+  const setStatus = db.prepare(
+    `UPDATE transcript_jobs SET status = @status, media_local_path = @mediaLocalPath,
+       transcript_local_path = @transcriptLocalPath, model = @model,
+       duration_seconds = @durationSeconds, error_code = @errorCode,
+       updated_at = datetime('now') WHERE id = @id`,
+  );
+  const incrementRetryStmt = db.prepare(
+    `UPDATE transcript_jobs SET retry_count = retry_count + 1 WHERE id = ?`,
+  );
+  const getRetryCountStmt = db.prepare(
+    `SELECT retry_count FROM transcript_jobs WHERE id = ?`,
+  );
+  const resetRetryStmt = db.prepare(
+    `UPDATE transcript_jobs SET retry_count = 0 WHERE id = ?`,
+  );
+  const enqueueFromCandidateStmt = db.prepare(
+    `INSERT INTO transcript_jobs
+       (course_id, activity_cmid, source_url, status, recording_key, title, source_type, media_url,
+        needs_auth, section_name, section_index, recording_date)
+     VALUES
+       (@courseId, @activityCmid, @sourceUrl, 'pending', @recordingKey, @title, @sourceType,
+        @mediaUrl, @needsAuth, @sectionName, @sectionIndex, @recordingDate)
+     ON CONFLICT(recording_key) WHERE recording_key IS NOT NULL DO NOTHING`,
+  );
+  const recoverInterruptedStmt = db.prepare(
+    `UPDATE transcript_jobs SET status = 'pending' WHERE status IN ('claimed', 'downloading_media', 'media_downloaded', 'transcribing', 'markdown_created')`,
+  );
+  const getAllStmt = db.prepare('SELECT * FROM transcript_jobs ORDER BY id');
+  const byIdStmt = db.prepare('SELECT * FROM transcript_jobs WHERE id = ?');
 
   const map = (r: Record<string, unknown>): TranscriptJob => ({
     id: r.id as number,
@@ -446,6 +483,16 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
     errorCode: (r.error_code as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
+    // Schema-v2-Felder (Spalten kommen mit MIGRATIONS[2]; bis dahin null/0).
+    recordingKey: (r.recording_key as string | null) ?? null,
+    title: (r.title as string | null) ?? null,
+    sourceType: (r.source_type as TranscriptJob['sourceType']) ?? null,
+    mediaUrl: (r.media_url as string | null) ?? null,
+    needsAuth: Boolean((r.needs_auth as number | null) ?? 0),
+    sectionName: (r.section_name as string | null) ?? null,
+    sectionIndex: (r.section_index as number | null) ?? null,
+    recordingDate: (r.recording_date as string | null) ?? null,
+    retryCount: (r.retry_count as number | null) ?? 0,
   });
 
   return {
@@ -467,6 +514,13 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
     getByStatus(status: TranscriptJobStatus): TranscriptJob[] {
       return (byStatus.all(status) as Record<string, unknown>[]).map(map);
     },
+    getAll(): TranscriptJob[] {
+      return (getAllStmt.all() as Record<string, unknown>[]).map(map);
+    },
+    getById(id: number): TranscriptJob | null {
+      const row = byIdStmt.get(id) as Record<string, unknown> | undefined;
+      return row ? map(row) : null;
+    },
     update(job: TranscriptJob): void {
       update.run({
         id: job.id,
@@ -477,6 +531,74 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
         durationSeconds: job.durationSeconds,
         errorCode: job.errorCode,
       });
+    },
+    /** Idempotentes Einreihen anhand recording_key (INSERT ... ON CONFLICT DO NOTHING). */
+    enqueueFromCandidate(input: {
+      courseId: number;
+      activityCmid: number | null;
+      sourceUrl: string;
+      recordingKey: string;
+      title: string | null;
+      sourceType: RecordingSourceKind | null;
+      mediaUrl: string | null;
+      needsAuth: boolean;
+      sectionName: string | null;
+      sectionIndex: number | null;
+      recordingDate: string | null;
+    }): void {
+      enqueueFromCandidateStmt.run({
+        courseId: input.courseId,
+        activityCmid: input.activityCmid,
+        sourceUrl: input.sourceUrl,
+        recordingKey: input.recordingKey,
+        title: input.title,
+        sourceType: input.sourceType,
+        mediaUrl: input.mediaUrl,
+        needsAuth: toInt(input.needsAuth),
+        sectionName: input.sectionName,
+        sectionIndex: input.sectionIndex,
+        recordingDate: input.recordingDate,
+      });
+    },
+    /** Transaktional exakt einen Job mit Status 'pending' auf 'claimed' setzen und zurückgeben. */
+    claimNext(): TranscriptJob | null {
+      const tx = db.transaction(() => {
+        const nextId = claimNextStmt.get() as { id: number } | undefined;
+        if (!nextId) return null;
+        const claimed = markClaimedStmt.run(nextId.id);
+        if (claimed.changes !== 1) return null;
+        const row = byIdStmt.get(nextId.id) as Record<string, unknown> | undefined;
+        return row ? map(row) : null;
+      });
+      return tx();
+    },
+    /** Setze Status + optionale Felder (mediaLocalPath, transcriptLocalPath, model, durationSeconds, errorCode). */
+    setStatus(id: number, status: TranscriptJobStatus, patch?: Partial<Omit<TranscriptJob, 'id'>>): void {
+      const job = this.getById(id);
+      if (!job) throw new Error(`Job ${id} nicht gefunden`);
+      const updated = { ...job, status, ...patch };
+      setStatus.run({
+        id,
+        status: updated.status,
+        mediaLocalPath: updated.mediaLocalPath,
+        transcriptLocalPath: updated.transcriptLocalPath,
+        model: updated.model,
+        durationSeconds: updated.durationSeconds,
+        errorCode: updated.errorCode,
+      });
+    },
+    /** Inkrementiere retry_count, gib neuen Wert zurück. */
+    incrementRetry(id: number): number {
+      incrementRetryStmt.run(id);
+      const row = getRetryCountStmt.get(id) as { retry_count: number } | undefined;
+      return (row?.retry_count ?? 0) as number;
+    },
+    resetRetry(id: number): void {
+      resetRetryStmt.run(id);
+    },
+    /** Crash-Recovery: alle unterbrochenen Jobs auf 'pending' zurücksetzen. */
+    recoverInterrupted(): void {
+      recoverInterruptedStmt.run();
     },
   };
 }
@@ -564,7 +686,11 @@ export function makeSettingsRepo(db: AppDatabase) {
 export function makeMcpStatusRepo(db: AppDatabase) {
   const get = db.prepare('SELECT * FROM mcp_status ORDER BY id LIMIT 1');
   const insert = db.prepare('INSERT INTO mcp_status (enabled, configured_at) VALUES (?, ?)');
-  const update = db.prepare('UPDATE mcp_status SET enabled = ?, last_checked_at = ? WHERE id = ?');
+  const update = db.prepare(
+    `UPDATE mcp_status SET enabled = @enabled,
+       configured_at = CASE WHEN @enabled = 1 THEN COALESCE(configured_at, @now) ELSE configured_at END,
+       last_checked_at = @now WHERE id = @id`,
+  );
 
   const map = (r: Record<string, unknown>): McpStatus => ({
     id: r.id as number,
@@ -583,7 +709,7 @@ export function makeMcpStatusRepo(db: AppDatabase) {
     },
     set(enabled: boolean): void {
       const current = this.get();
-      update.run(toInt(enabled), nowIso(), current.id);
+      update.run({ enabled: toInt(enabled), now: nowIso(), id: current.id });
     },
   };
 }

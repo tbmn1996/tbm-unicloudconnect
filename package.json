@@ -23,6 +23,7 @@
     "rebuild:node": "npm rebuild better-sqlite3"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "axios": "^1.15.0",
     "axios-cookiejar-support": "^6.0.5",
     "better-sqlite3": "^11.7.0",

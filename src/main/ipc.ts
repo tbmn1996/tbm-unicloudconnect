@@ -1,9 +1,11 @@
+import { resolve, sep } from 'node:path';
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type { AppRuntime } from './runtime';
 import { LearnwebClient } from '../learnweb-core/client';
 import { LearnwebAuthError } from '../learnweb-core/session';
 import { checkLibraryPath, createAndCheckLibraryPath } from '../local-library/access';
 import { IPC } from '../shared/ipc';
+import type { TranscriptionSettings, TranscriptionStatus } from '../shared/domain';
 
 export function registerIpcHandlers(runtime: AppRuntime): void {
   ipcMain.handle(IPC.getAppState, () => runtime.getAppState());
@@ -87,11 +89,48 @@ export function registerIpcHandlers(runtime: AppRuntime): void {
     runtime.repos.settings.set(input.key, requireText(input.value, 'Einstellungswert'));
   });
   ipcMain.handle(IPC.getMcpStatus, () => runtime.repos.mcp.get());
+
+  ipcMain.handle(IPC.getTranscriptionSettings, () => runtime.transcription.getSettings());
+  ipcMain.handle(IPC.setTranscriptionSettings, (_event, input: TranscriptionSettings) =>
+    runtime.transcription.setSettings(requireTranscriptionSettings(input)));
+  ipcMain.handle(IPC.getTranscriptionWorkerStatus, () => runtime.transcription.getWorkerStatus());
+  ipcMain.handle(IPC.setupTranscriptionWorker, () => runtime.transcription.setupWorker());
+  ipcMain.handle(IPC.scanRecordings, () => runtime.transcription.scanRecordings());
+  ipcMain.handle(IPC.enqueueTranscriptions, (_event, input: { recordingKeys: string[] }) =>
+    runtime.transcription.enqueue(requireRecordingKeys(input?.recordingKeys)));
+  ipcMain.handle(IPC.getTranscriptJobs, () => runtime.transcription.getJobs());
+  ipcMain.handle(IPC.startTranscriptionQueue, () => {
+    void runtime.transcription.start();
+  });
+  ipcMain.handle(IPC.cancelTranscription, () => runtime.transcription.cancel());
+  ipcMain.handle(IPC.retryTranscription, (_event, input: { jobId: number }) =>
+    runtime.transcription.retry(requirePositiveInt(input?.jobId, 'Job-ID')));
+  ipcMain.handle(IPC.openTranscript, async (_event, input: { jobId: number }) => {
+    const job = runtime.repos.transcriptJobs.getById(requirePositiveInt(input?.jobId, 'Job-ID'));
+    const libraryPath = runtime.getLibraryPath();
+    if (!job?.transcriptLocalPath || !libraryPath) throw new Error('Transkript ist nicht verfügbar.');
+    const root = resolve(libraryPath);
+    const target = resolve(job.transcriptLocalPath);
+    if (target !== root && !target.startsWith(root + sep)) throw new Error('Transkriptpfad ist ungültig.');
+    const error = await shell.openPath(target);
+    if (error) throw new Error('Transkript konnte nicht geöffnet werden.');
+  });
+
+  ipcMain.handle(IPC.getMcpRuntimeStatus, () => runtime.mcp.getStatus());
+  ipcMain.handle(IPC.setMcpEnabled, (_event, input: { enabled: boolean }) =>
+    runtime.mcp.setEnabled(input?.enabled === true));
+  ipcMain.handle(IPC.regenerateMcpToken, () => runtime.mcp.regenerateToken());
 }
 
 export function broadcastSyncStatus(status: unknown): void {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send(IPC.evtSyncStatus, status);
+  }
+}
+
+export function broadcastTranscriptionStatus(status: TranscriptionStatus): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send(IPC.evtTranscriptionStatus, status);
   }
 }
 
@@ -129,4 +168,23 @@ function publicError(error: unknown, fallback: string): string {
   if (error instanceof LearnwebAuthError) return error.message;
   if (error instanceof Error && /Keine LearnWeb|Keychain/.test(error.message)) return error.message;
   return fallback;
+}
+
+function requireRecordingKeys(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 1_000
+    || value.some((item) => typeof item !== 'string' || item.length === 0 || item.length > 256)) {
+    throw new Error('Aufzeichnungs-Auswahl ist ungültig.');
+  }
+  return value;
+}
+
+function requireTranscriptionSettings(value: unknown): TranscriptionSettings {
+  if (!value || typeof value !== 'object') throw new Error('Transkriptions-Einstellungen sind ungültig.');
+  const input = value as Partial<TranscriptionSettings>;
+  if (!['none', 'manual', 'auto'].includes(input.mode ?? '')
+    || !['de', 'en', 'auto'].includes(input.language ?? '')
+    || !['base', 'small', 'large-v3-turbo'].includes(input.model ?? '')) {
+    throw new Error('Transkriptions-Einstellungen sind ungültig.');
+  }
+  return input as TranscriptionSettings;
 }

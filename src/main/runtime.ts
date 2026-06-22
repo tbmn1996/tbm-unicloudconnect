@@ -1,4 +1,6 @@
 import type { Database } from 'better-sqlite3';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { openDatabase } from '../db/db';
 import { createRepos, type Repos } from '../db/repos';
 import { getPassword, KEYCHAIN_SERVICE, setCredential } from '../keychain/keychain';
@@ -6,15 +8,33 @@ import { LearnwebClient } from '../learnweb-core/client';
 import { LearnwebSession } from '../learnweb-core/session';
 import type { AppState, LoginResult, SyncStatus } from '../shared/domain';
 import { SyncEngine } from '../sync-engine/engine';
+import { McpRuntime } from '../mcp/runtime';
+import { TranscriptionManager } from '../transcription/manager';
+import type { TranscriptionStatus } from '../shared/domain';
+
+export interface AppRuntimeOptions {
+  workerDir?: string;
+  mcpEntryPath?: string;
+  mcpCommand?: string;
+  claudeConfigPath?: string;
+  onTranscriptionStatus?: (status: TranscriptionStatus) => void;
+}
 
 export class AppRuntime {
   readonly db: Database;
   readonly repos: Repos;
   readonly sync: SyncEngine;
+  readonly transcription: TranscriptionManager;
+  readonly mcp: McpRuntime;
   private session: LearnwebSession | null = null;
   private sessionAccount: string | null = null;
+  private autoTranscriptionRunning = false;
 
-  constructor(dbPath: string, onSyncStatus: (status: SyncStatus) => void) {
+  constructor(
+    dbPath: string,
+    onSyncStatus: (status: SyncStatus) => void,
+    options: AppRuntimeOptions = {},
+  ) {
     this.db = openDatabase(dbPath);
     this.repos = createRepos(this.db);
     this.sync = new SyncEngine(this.repos, {
@@ -22,6 +42,22 @@ export class AppRuntime {
       getSession: () => this.getSession(),
       getLibraryPath: () => this.getLibraryPath(),
     }, onSyncStatus);
+    this.transcription = new TranscriptionManager({
+      repos: this.repos,
+      getSession: () => this.getSession(),
+      getLibraryPath: () => this.getLibraryPath(),
+      workerDir: options.workerDir ?? join(process.cwd(), 'transcription-worker'),
+      onStatus: options.onTranscriptionStatus ?? (() => undefined),
+    });
+    this.mcp = new McpRuntime({
+      repos: this.repos,
+      dbPath,
+      configPath: options.claudeConfigPath
+        ?? join(homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json'),
+      command: options.mcpCommand ?? process.execPath,
+      args: [options.mcpEntryPath ?? join(process.cwd(), 'out', 'main', 'mcp.js')],
+    });
+    void this.mcp.restore().catch(() => this.repos.mcp.set(false));
   }
 
   getLibraryPath(): string | null {
@@ -81,7 +117,20 @@ export class AppRuntime {
     return this.session;
   }
 
+  async runAutoTranscription(): Promise<void> {
+    if (this.autoTranscriptionRunning || this.transcription.getSettings().mode !== 'auto') return;
+    this.autoTranscriptionRunning = true;
+    try {
+      const candidates = await this.transcription.scanRecordings();
+      this.transcription.enqueue(candidates.map((candidate) => candidate.recordingKey));
+      await this.transcription.start();
+    } finally {
+      this.autoTranscriptionRunning = false;
+    }
+  }
+
   close(): void {
+    void this.mcp.close();
     this.db.close();
   }
 }

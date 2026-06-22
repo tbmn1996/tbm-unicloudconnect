@@ -16,6 +16,7 @@ Dieses Dokument definiert die harten Grenzen für die erste Ausbaustufe (MVP 1) 
 | **Plattform** | Münster LearnWeb (feste URL intern) | Frei konfigurierbare LearnWeb-Instanzen |
 | **Bedienung** | Grafischer Setup-Wizard & Dashboard | Reine CLI, manuelle `.env`-Konfiguration |
 | **Hintergrund** | Statusbar-Menü zur schnellen Übersicht | Unsichtbare Dämonen ohne UI-Indikator |
+| **MCP** | Optionales lokales stdio + Loopback-SSE, explizit opt-in | Automatische Tunnel oder öffentliche Endpunkte |
 
 ---
 
@@ -73,3 +74,7 @@ Jedes erzeugte Transkript wird als eigenständige Markdown-Datei (`.md`) im Kurs
 
 [Hier folgt der eigentliche, nach Absätzen gegliederte Text des Transkripts...]
 ```
+
+Die Datei liegt unter `<Semester>/<Kurs>/<Abschnitt>/Transkripte/<Titel>-<Kurz-ID>.md`.
+Fehlende Metadaten werden als `Unbekannt` ausgegeben. Der Text wird in ungefähr 30 Sekunden lange
+Absätze mit `[HH:MM:SS]`-Zeitmarken gegliedert. Tatsächlich verwendetes Backend und Modell werden gespeichert.

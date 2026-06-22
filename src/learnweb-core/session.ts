@@ -13,6 +13,10 @@
  * NICHT zuständig für HTML-Parsing (siehe parsers/*).
  */
 import axios, { type AxiosInstance, type AxiosResponse } from 'axios';
+import { createWriteStream } from 'node:fs';
+import { unlink } from 'node:fs/promises';
+import { Transform, type Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { wrapper } from 'axios-cookiejar-support';
 import { CookieJar } from 'tough-cookie';
 import * as cheerio from 'cheerio';
@@ -66,6 +70,13 @@ export interface DownloadFileResult {
   contentType: string;
   filename?: string;
   bytes: Buffer;
+}
+
+export interface DownloadToPathResult {
+  status: number;
+  contentType: string;
+  filename?: string;
+  sizeBytes: number;
 }
 
 export class LearnwebSession {
@@ -172,6 +183,55 @@ export class LearnwebSession {
     }
   }
 
+  /** Authentifizierter, größenbegrenzter Streaming-Download ohne Vollbuffer im RAM. */
+  async downloadFileToPath(
+    url: string,
+    destination: string,
+    options: { maxBytes?: number; timeoutMs?: number } = {},
+  ): Promise<DownloadToPathResult> {
+    const maxBytes = options.maxBytes ?? 2 * 1024 * 1024 * 1024;
+    const timeoutMs = options.timeoutMs ?? 30 * 60_000;
+    await this.throttleInterCall();
+    await this.acquireSemaphore();
+    try {
+      await this.ensureLoggedIn();
+      let response = await this.rawStreamDownload(url, timeoutMs);
+      if (response.contentType.toLowerCase().startsWith('text/html')) {
+        response.stream.destroy();
+        await this.performLogin(true);
+        response = await this.rawStreamDownload(url, timeoutMs);
+      }
+      if (response.status < 200 || response.status >= 300
+        || response.contentType.toLowerCase().startsWith('text/html')) {
+        response.stream.destroy();
+        throw new LearnwebUpstreamError('Medien-Download fehlgeschlagen.', response.status);
+      }
+
+      let sizeBytes = 0;
+      const limiter = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          sizeBytes += chunk.length;
+          if (sizeBytes > maxBytes) callback(new LearnwebFileTooLargeError());
+          else callback(null, chunk);
+        },
+      });
+      try {
+        await pipeline(response.stream, limiter, createWriteStream(destination, { flags: 'wx' }));
+      } catch (error) {
+        await unlink(destination).catch(() => undefined);
+        throw error;
+      }
+      return {
+        status: response.status,
+        contentType: response.contentType,
+        filename: response.filename,
+        sizeBytes,
+      };
+    } finally {
+      this.releaseSemaphore();
+    }
+  }
+
   // --- intern ---
 
   private async postForm(path: string, form: Record<string, string>): Promise<AxiosResponse> {
@@ -224,6 +284,32 @@ export class LearnwebSession {
       ) {
         throw new LearnwebFileTooLargeError();
       }
+      throw error;
+    }
+  }
+
+  private async rawStreamDownload(url: string, timeoutMs: number): Promise<{
+    status: number;
+    contentType: string;
+    filename?: string;
+    stream: Readable;
+  }> {
+    try {
+      const response = await this.client.get<Readable>(url, {
+        responseType: 'stream',
+        timeout: timeoutMs,
+        maxRedirects: 5,
+        validateStatus: () => true,
+      });
+      const headers = normalizeHeaders(response.headers);
+      return {
+        status: response.status,
+        contentType: headers['content-type'] ?? 'application/octet-stream',
+        filename: extractFilenameFromContentDisposition(headers['content-disposition']),
+        stream: response.data,
+      };
+    } catch (error) {
+      if (isAxiosTimeoutError(error)) throw new LearnwebTimeoutError();
       throw error;
     }
   }

@@ -1,5 +1,5 @@
 import type { UniCloudApi } from '../shared/ipc';
-import type { AppState, Course, SyncStatus } from '../shared/domain';
+import type { AppState, Course, SyncStatus, TranscriptionStatus } from '../shared/domain';
 
 const state: AppState = {
   isSetupComplete: false,
@@ -17,6 +17,7 @@ let courses: Course[] = [
 ];
 let syncStatus: SyncStatus = { state: 'idle', lastRun: null, activeJobs: 0 };
 const listeners = new Set<(status: SyncStatus) => void>();
+const transcriptionListeners = new Set<(status: TranscriptionStatus) => void>();
 
 export function createDevApi(): UniCloudApi {
   return {
@@ -55,9 +56,45 @@ export function createDevApi(): UniCloudApi {
     getSettings: async () => ({ syncIntervalMinutes: null, defaultLibraryPath: state.libraryPath }),
     setSetting: async () => undefined,
     getMcpStatus: async () => ({ id: 1, enabled: false, configuredAt: null, lastCheckedAt: null }),
+
+    // Transkription (Vorschau-Mocks)
+    getTranscriptionSettings: async () => ({ mode: 'none', language: 'de', model: 'small' }),
+    setTranscriptionSettings: async (input) => ({ ...input }),
+    getTranscriptionWorkerStatus: async () => ({ installed: false, backend: 'mlx-whisper', downloadedModels: [] }),
+    setupTranscriptionWorker: async () => ({ installed: true, backend: 'mlx-whisper', downloadedModels: ['small'] }),
+    scanRecordings: async () => [],
+    enqueueTranscriptions: async () => [],
+    getTranscriptJobs: async () => [],
+    startTranscriptionQueue: async () => undefined,
+    cancelTranscription: async () => undefined,
+    retryTranscription: async () => undefined,
+    openTranscript: async () => undefined,
+
+    // MCP (Vorschau-Mocks)
+    getMcpRuntimeStatus: async () => ({
+      enabled: false, stdioRegistered: false, sseRunning: false,
+      sseUrl: null, token: null, configuredAt: null, lastCheckedAt: null,
+    }),
+    setMcpEnabled: async ({ enabled }) => ({
+      enabled, stdioRegistered: enabled, sseRunning: enabled,
+      sseUrl: enabled ? 'http://127.0.0.1:3000/sse' : null,
+      token: enabled ? 'dev-token-0000' : null,
+      configuredAt: enabled ? new Date().toISOString() : null,
+      lastCheckedAt: new Date().toISOString(),
+    }),
+    regenerateMcpToken: async () => ({
+      enabled: true, stdioRegistered: true, sseRunning: true,
+      sseUrl: 'http://127.0.0.1:3000/sse', token: 'dev-token-' + Math.random().toString(36).slice(2, 8),
+      configuredAt: new Date().toISOString(), lastCheckedAt: new Date().toISOString(),
+    }),
+
     onSyncStatus: (callback) => {
       listeners.add(callback);
       return () => listeners.delete(callback);
+    },
+    onTranscriptionStatus: (callback) => {
+      transcriptionListeners.add(callback);
+      return () => transcriptionListeners.delete(callback);
     },
   };
 }

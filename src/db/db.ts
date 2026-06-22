@@ -12,11 +12,25 @@ import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
 export type AppDatabase = Database.Database;
 
 /**
- * Zukünftige Migrationsschritte: je Eintrag eine Funktion, die von Version
- * (index) auf (index+1) hebt. Aktuell leer — Version 1 ist das Basis-Schema.
+ * Migrationsschritte: je Eintrag eine Funktion, die von Version (index) auf
+ * (index+1) hebt. Migration 1→2 erweitert transcript_jobs um v2-Felder.
  */
 const MIGRATIONS: Readonly<Partial<Record<number, (db: AppDatabase) => void>>> = {
-  // 2: (db) => { db.exec("ALTER TABLE ..."); },
+  2: (db) => {
+    // Erweitere transcript_jobs um Schema-v2-Felder (Migration 1→2)
+    db.exec(`
+      ALTER TABLE transcript_jobs ADD COLUMN recording_key TEXT;
+      ALTER TABLE transcript_jobs ADD COLUMN title TEXT;
+      ALTER TABLE transcript_jobs ADD COLUMN source_type TEXT CHECK (source_type IN ('opencast','youtube','media'));
+      ALTER TABLE transcript_jobs ADD COLUMN media_url TEXT;
+      ALTER TABLE transcript_jobs ADD COLUMN needs_auth INTEGER NOT NULL DEFAULT 0 CHECK (needs_auth IN (0,1));
+      ALTER TABLE transcript_jobs ADD COLUMN section_name TEXT;
+      ALTER TABLE transcript_jobs ADD COLUMN section_index INTEGER;
+      ALTER TABLE transcript_jobs ADD COLUMN recording_date TEXT;
+      ALTER TABLE transcript_jobs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_jobs_recording_key ON transcript_jobs(recording_key) WHERE recording_key IS NOT NULL;
+    `);
+  },
 };
 
 /**

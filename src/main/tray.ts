@@ -28,6 +28,7 @@ export class StatusTray {
     const labels = {
       idle: 'UC',
       syncing: 'UC ↻',
+      transcribing: 'UC T',
       error: 'UC !',
       needs_setup: 'UC •',
     } as const;
@@ -36,7 +37,8 @@ export class StatusTray {
       { label: 'UniCloudConnect öffnen', click: this.showWindow },
       {
         label: this.status.state === 'syncing' ? 'Synchronisierung läuft …' : 'Jetzt synchronisieren',
-        enabled: this.status.state !== 'syncing' && this.status.state !== 'needs_setup',
+        enabled: this.status.state !== 'syncing' && this.status.state !== 'transcribing'
+          && this.status.state !== 'needs_setup',
         click: this.startSync,
       },
       { type: 'separator' },
