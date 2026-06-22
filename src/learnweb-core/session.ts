@@ -500,7 +500,21 @@ function extractFilenameFromContentDisposition(header?: string): string | undefi
   }
   const plainMatch = /filename\s*=\s*([^;\r\n]+)/i.exec(header);
   if (!plainMatch || !plainMatch[1]) return undefined;
-  return stripQuotes(plainMatch[1]);
+  return fixLatin1Mojibake(stripQuotes(plainMatch[1]));
+}
+
+/**
+ * Node dekodiert HTTP-Header grundsaetzlich als Latin-1 (RFC 7230 erlaubt nur
+ * ASCII in Headern). Sendet ein Server unkodierte UTF-8-Bytes im plain
+ * filename-Parameter (statt RFC-5987 filename*=UTF-8''...), erscheinen
+ * Mehrbyte-Zeichen als mehrere Latin-1-Zeichen (z.B. "Ã¼" statt "ü"). Die
+ * Latin-1-Zeichen als die urspruenglichen UTF-8-Bytes zu re-interpretieren
+ * behebt das, ist aber nur sicher anzuwenden, wenn das Ergebnis valides UTF-8
+ * ergibt (sonst bleibt der Originalwert erhalten).
+ */
+function fixLatin1Mojibake(value: string): string {
+  const reinterpreted = Buffer.from(value, 'latin1').toString('utf8');
+  return reinterpreted.includes('�') ? value : reinterpreted;
 }
 
 function stripQuotes(value: string): string {

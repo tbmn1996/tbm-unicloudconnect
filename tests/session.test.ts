@@ -37,6 +37,48 @@ test('Credential-Prüfung lehnt einen Redirect ohne authentifizierte Sitzung ab'
   }
 });
 
+test('downloadFile dekodiert Umlaute im plain Content-Disposition-filename korrekt (Issue #8)', async () => {
+  const server = createServer((request, response) => {
+    if (request.method === 'GET' && request.url === '/login/index.php') {
+      response.writeHead(200, { 'Content-Type': 'text/html' });
+      response.end('<form><input name="logintoken" value="token"></form>');
+      return;
+    }
+    if (request.method === 'POST' && request.url === '/login/index.php') {
+      response.writeHead(303, { Location: '/my/', 'Set-Cookie': 'MoodleSession=valid; Path=/; HttpOnly' });
+      response.end();
+      return;
+    }
+    if (request.method === 'GET' && request.url === '/my/') {
+      response.writeHead(200, { 'Content-Type': 'text/html' });
+      response.end('<main>Dashboard</main>');
+      return;
+    }
+    if (request.url === '/datei.pdf') {
+      // Server sendet rohe UTF-8-Bytes im filename-Parameter (kein RFC-5987-Encoding).
+      // Node decodiert HTTP-Header als Latin-1, daher kommt der Header-String hier
+      // bereits mojibake an ("WirtschaftsprÃ¼fer_ab_2024.pdf") - genau wie live beobachtet.
+      const mojibakeFilename = Buffer.from('Wirtschaftsprüfer_ab_2024.pdf', 'utf8').toString('latin1');
+      response.writeHead(200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${mojibakeFilename}"`,
+      });
+      response.end('%PDF-fake');
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  const baseUrl = await listen(server);
+  try {
+    const session = new LearnwebSession('user', 'secret', baseUrl);
+    const result = await session.downloadFile(`${baseUrl}/datei.pdf`);
+    assert.equal(result.filename, 'Wirtschaftsprüfer_ab_2024.pdf');
+  } finally {
+    await close(server);
+  }
+});
+
 function createLoginServer(postStatus: number, issueCookie = true): Server {
   return createServer((request, response) => {
     if (request.method === 'GET' && request.url === '/login/index.php') {
