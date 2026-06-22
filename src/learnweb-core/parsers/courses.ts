@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { absoluteUrl, normalizeText } from './common';
+import { absoluteUrl, decodeHtmlEntities, normalizeText } from './common';
 
 export interface ParsedCourse {
   courseId: number;
@@ -21,7 +21,8 @@ export function parseCourses(html: string, baseUrl: string): ParsedCourse[] {
     const match = href?.match(/[?&]id=(\d+)/);
     if (!href || !match?.[1]) return;
     const courseId = Number.parseInt(match[1], 10);
-    const title = normalizeText($(element).attr('title'));
+    // .attr('title') gibt den Attributwert roh zurück — Entities müssen explizit dekodiert werden.
+    const title = normalizeText(decodeHtmlEntities($(element).attr('title')));
     const text = normalizeText($(element).text());
     const candidates = [
       title ? { name: title, score: scoreName(title, true) } : null,

@@ -192,6 +192,7 @@ export function makeActivitiesRepo(db: AppDatabase) {
   const selected = db.prepare('SELECT * FROM activities WHERE is_selected = 1');
   const setSel = db.prepare('UPDATE activities SET is_selected = ? WHERE cmid = ?');
   const setStatus = db.prepare('UPDATE activities SET status = ? WHERE cmid = ?');
+  const clearAll = db.prepare('DELETE FROM activities');
 
   const map = (r: Record<string, unknown>): Activity => ({
     cmid: r.cmid as number,
@@ -237,6 +238,10 @@ export function makeActivitiesRepo(db: AppDatabase) {
     setStatus(cmid: number, status: ActivityStatus): void {
       setStatus.run(status, cmid);
     },
+    /** Löscht alle Aktivitäten (Logout/Account-Wechsel). */
+    clear(): void {
+      clearAll.run();
+    },
   };
 }
 
@@ -256,6 +261,7 @@ export function makeFileAssetsRepo(db: AppDatabase) {
        local_path = @localPath, size_bytes = @sizeBytes, hash = @hash,
        status = @status, downloaded_at = @downloadedAt WHERE id = @id`,
   );
+  const clearAll = db.prepare('DELETE FROM file_assets');
 
   const map = (r: Record<string, unknown>): FileAsset => ({
     id: r.id as number,
@@ -313,6 +319,10 @@ export function makeFileAssetsRepo(db: AppDatabase) {
       const row = byHash.get(hash) as Record<string, unknown> | undefined;
       return row ? map(row) : null;
     },
+    /** Löscht alle Datei-Assets (Logout/Account-Wechsel). */
+    clear(): void {
+      clearAll.run();
+    },
   };
 }
 
@@ -329,6 +339,7 @@ export function makeDownloadJobsRepo(db: AppDatabase) {
     `UPDATE download_jobs SET status = @status, local_path = @localPath, size_bytes = @sizeBytes,
        error_message = @errorMessage, retry_count = @retryCount, updated_at = @now WHERE id = @id`,
   );
+  const clearAll = db.prepare('DELETE FROM download_jobs');
 
   const map = (r: Record<string, unknown>): DownloadJob => ({
     id: r.id as number,
@@ -373,6 +384,10 @@ export function makeDownloadJobsRepo(db: AppDatabase) {
         now: nowIso(),
       });
     },
+    /** Löscht alle Download-Jobs (Logout/Account-Wechsel). */
+    clear(): void {
+      clearAll.run();
+    },
   };
 }
 
@@ -389,6 +404,7 @@ export function makeSelectionRulesRepo(db: AppDatabase) {
     `UPDATE selection_rules SET is_active = ?, updated_at = datetime('now') WHERE id = ?`,
   );
   const remove = db.prepare('DELETE FROM selection_rules WHERE id = ?');
+  const clearAll = db.prepare('DELETE FROM selection_rules');
 
   const map = (r: Record<string, unknown>): SelectionRule => ({
     id: r.id as number,
@@ -423,6 +439,10 @@ export function makeSelectionRulesRepo(db: AppDatabase) {
     },
     delete(id: number): void {
       remove.run(id);
+    },
+    /** Löscht alle Auswahlregeln (Logout/Account-Wechsel). */
+    clear(): void {
+      clearAll.run();
     },
   };
 }

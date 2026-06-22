@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import * as crypto from 'node:crypto';
 import type { RecordingCandidate } from '../../shared/domain';
-import { absoluteUrl, normalizeText } from './common';
+import { absoluteUrl, decodeHtmlEntities, normalizeText } from './common';
 
 /**
  * Kontext, der beim Parsen von Recordings übergeben wird.
@@ -216,7 +216,8 @@ function extractOpencastRecordings(
         seenIds.add(episodeId);
         const mediaUrl = absoluteUrl(baseUrl, src);
         const elemTitle =
-          toNullable($(elem).attr('title')) ||
+          // .attr('title') gibt rohe HTML-Entities zurück → dekodieren
+          toNullable(decodeHtmlEntities($(elem).attr('title'))) ||
           normalizeText($(elem).text()) ||
           title ||
           `Opencast Recording ${episodeId.slice(0, 8)}`;
@@ -242,7 +243,8 @@ function extractOpencastRecordings(
       seenIds.add(episodeId);
       const mediaUrl = absoluteUrl(baseUrl, href);
       const elemTitle =
-        toNullable($(elem).attr('title')) ||
+        // .attr('title') gibt rohe HTML-Entities zurück → dekodieren
+        toNullable(decodeHtmlEntities($(elem).attr('title'))) ||
         normalizeText($(elem).text()) ||
         title ||
         `Opencast Recording ${episodeId.slice(0, 8)}`;
@@ -286,7 +288,8 @@ function extractYoutubeRecordings(
       seenIds.add(videoId);
       const mediaUrl = `https://www.youtube.com/watch?v=${videoId}`;
       const elemTitle =
-        toNullable($(elem).attr('title')) || title || `YouTube Video ${videoId}`;
+        // .attr('title') gibt rohe HTML-Entities zurück → dekodieren
+        toNullable(decodeHtmlEntities($(elem).attr('title'))) || title || `YouTube Video ${videoId}`;
       candidates.push({
         videoId,
         mediaUrl,
@@ -330,7 +333,8 @@ function extractYoutubeRecordings(
       seenIds.add(videoId);
       const mediaUrl = `https://www.youtube.com/watch?v=${videoId}`;
       const elemTitle =
-        toNullable($(elem).attr('title')) ||
+        // .attr('title') gibt rohe HTML-Entities zurück → dekodieren
+        toNullable(decodeHtmlEntities($(elem).attr('title'))) ||
         normalizeText($(elem).text()) ||
         `YouTube Video ${videoId}`;
       candidates.push({
@@ -365,8 +369,9 @@ function extractMediaRecordings(
       if (!seenUrls.has(mediaUrl)) {
         seenUrls.add(mediaUrl);
         const elemTitle =
-          toNullable($(elem).attr('title')) ||
-          toNullable($(elem).attr('alt')) ||
+          // .attr('title')/.attr('alt') geben rohe HTML-Entities zurück → dekodieren
+          toNullable(decodeHtmlEntities($(elem).attr('title'))) ||
+          toNullable(decodeHtmlEntities($(elem).attr('alt'))) ||
           title ||
           'Mediendatei';
         candidates.push({
@@ -385,7 +390,8 @@ function extractMediaRecordings(
       if (!seenUrls.has(mediaUrl)) {
         seenUrls.add(mediaUrl);
         const elemTitle =
-          toNullable($(elem).attr('title')) ||
+          // .attr('title') gibt rohe HTML-Entities zurück → dekodieren
+          toNullable(decodeHtmlEntities($(elem).attr('title'))) ||
           normalizeText($(elem).text()) ||
           title ||
           'Mediendatei';

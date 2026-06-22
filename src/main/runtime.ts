@@ -142,6 +142,9 @@ export class AppRuntime {
     }
     this.repos.credentials.clear();
     this.clearAccountData();
+    // Setup-Flag zurücksetzen, damit beim Re-Login der Wizard vollständig
+    // von vorne durchlaufen wird (Issue #7).
+    this.repos.settings.set('setup_complete', '0');
     this.session = null;
     this.sessionAccount = null;
     if (this.repos.mcp.get().enabled) {
@@ -150,8 +153,15 @@ export class AppRuntime {
   }
 
   private clearAccountData(): void {
+    // Alle account-spezifischen Tabellen in einer einzigen Transaktion leeren,
+    // damit kein Teilzustand übrig bleibt (Issue #4).
     this.db.transaction(() => {
       this.repos.courses.clear();
+      this.repos.activities.clear();
+      this.repos.downloadJobs.clear();
+      this.repos.transcriptJobs.clear();
+      this.repos.fileAssets.clear();
+      this.repos.selectionRules.clear();
       this.repos.syncRuns.clear();
     })();
   }

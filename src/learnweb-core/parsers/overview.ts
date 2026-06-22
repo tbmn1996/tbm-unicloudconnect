@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { absoluteUrl, normalizeText, truncate } from './common';
+import { absoluteUrl, decodeHtmlEntities, normalizeText, truncate } from './common';
 
 export interface ParsedActivity {
   cmid: number;
@@ -30,8 +30,9 @@ export function parseCourseOverview(
 
   $('li.course-section').each((_, sectionElement) => {
     const section = $(sectionElement);
-    const name = section.attr('data-sectionname')
-      ?? normalizeText(section.find('h3, h4').first().text());
+    // data-sectionname ist ein HTML-Attribut → .attr() gibt rohe Entities zurück → dekodieren.
+    const name = decodeHtmlEntities(section.attr('data-sectionname'))
+      || normalizeText(section.find('h3, h4').first().text());
     const activities: ParsedActivity[] = [];
 
     section.find('ul[data-for="cmlist"] li[data-for="cmitem"]').each((__, itemElement) => {
@@ -40,9 +41,10 @@ export function parseCourseOverview(
       if (!Number.isFinite(cmid)) return;
       const modtype = item.attr('class')?.match(/\bmodtype_([a-z_]+)/)?.[1] ?? '';
       if (!modtype || modtype === 'label') return;
+      // data-activityname ist ein HTML-Attribut → .attr() gibt rohe Entities zurück → dekodieren.
       const activityName = (
-        item.find('[data-activityname]').first().attr('data-activityname')
-        ?? normalizeText(item.find('.instancename').first().text())
+        decodeHtmlEntities(item.find('[data-activityname]').first().attr('data-activityname'))
+        || normalizeText(item.find('.instancename').first().text())
       ) || `Aktivität ${cmid}`;
       const href = item.find('a.aalink, a.stretched-link').first().attr('href')
         ?? `/mod/${modtype}/view.php?id=${cmid}`;
