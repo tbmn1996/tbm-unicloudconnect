@@ -254,12 +254,17 @@ export class LearnwebSession {
 
   private async rawGet(path: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<LearnwebResponse> {
     try {
-      const resp = await this.client.get(path, { timeout: timeoutMs });
+      // responseType 'arraybuffer' verhindert, dass axios den Body anhand
+      // eines falsch erkannten Default-Charsets (Latin-1) vordekodiert. Wir
+      // dekodieren stattdessen selbst anhand des Content-Type-Headers.
+      const resp = await this.client.get(path, { timeout: timeoutMs, responseType: 'arraybuffer' });
+      const headers = normalizeHeaders(resp.headers);
+      const buffer = Buffer.from(resp.data as ArrayBuffer);
       return {
         status: resp.status,
         url: resp.request?.res?.responseUrl ?? this.resolveUrl(path),
-        headers: normalizeHeaders(resp.headers),
-        data: typeof resp.data === 'string' ? resp.data : String(resp.data ?? ''),
+        headers,
+        data: decodeBodyBuffer(buffer, headers['content-type']),
       };
     } catch (error) {
       if (isAxiosTimeoutError(error)) throw new LearnwebTimeoutError();
@@ -456,6 +461,21 @@ function normalizeHeaders(h: unknown): Record<string, string> {
     else if (v != null) result[k.toLowerCase()] = String(v);
   }
   return result;
+}
+
+/**
+ * Dekodiert einen rohen HTTP-Response-Body anhand des charset-Parameters im
+ * Content-Type-Header. Moodle/LearnWeb liefert standardmaessig UTF-8; ohne
+ * erkanntes oder unbekanntes Charset wird ebenfalls UTF-8 angenommen (Fix fuer
+ * Mojibake bei Umlauten, GitHub-Issue #8).
+ */
+function decodeBodyBuffer(buffer: Buffer, contentType?: string): string {
+  const match = contentType ? /charset=([^;]+)/i.exec(contentType) : null;
+  const charset = match?.[1]?.trim().toLowerCase().replace(/^["']|["']$/g, '');
+  if (charset === 'iso-8859-1' || charset === 'latin1' || charset === 'windows-1252') {
+    return buffer.toString('latin1');
+  }
+  return buffer.toString('utf8');
 }
 
 function isRedirect(status: number): boolean {

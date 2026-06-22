@@ -437,6 +437,41 @@ class TestProcessRequest:
         # andere Tests abgedeckt (z.B. missing_output_path).
         pass
 
+    def test_process_request_media_path_without_media_url(self):
+        """
+        Regressionstest für Issue #14/#16: Opencast-Jobs mit Auth liefern
+        media_url=None, aber eine lokal heruntergeladene media_path. Der
+        MISSING_MEDIA_URL-Guard darf in diesem Fall NICHT auslösen.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Lokale "heruntergeladene" Mediendatei simulieren
+            media_file = Path(tmpdir) / "downloaded.mp4"
+            media_file.write_bytes(b"fake-media-bytes")
+
+            request = {
+                "id": "test-6",
+                "source_kind": "opencast",
+                "media_url": None,
+                "media_path": str(media_file),
+                "language": "de",
+                "output_path": str(Path(tmpdir) / "test.md"),
+                "library_root": tmpdir,
+            }
+
+            # Whisper-Pfad mocken, damit kein echtes Modell geladen wird.
+            # Keine Untertitel verfügbar → Guard greift direkt danach.
+            with patch('transcription_worker.main.get_youtube_subtitles', return_value=None), \
+                 patch('transcription_worker.main.detect_architecture', return_value="arm64"), \
+                 patch('transcription_worker.main.get_transcription_backend',
+                       return_value=("mlx_whisper", MagicMock())):
+                result = process_request(request)
+
+            # Der Guard darf NICHT mit MISSING_MEDIA_URL abbrechen, da media_path
+            # eine gültige lokale Audioquelle ist. Der spätere Pfad (Normalisierung
+            # einer nicht echten Audiodatei) darf hier scheitern, das ist nicht
+            # Gegenstand dieses Tests.
+            assert result["code"] != "MISSING_MEDIA_URL"
+
 
 class TestSecurityNoLeaks:
     """Test, dass keine Secrets/URLs/Cookies geloggt werden."""

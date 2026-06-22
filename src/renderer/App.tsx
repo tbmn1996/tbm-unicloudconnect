@@ -762,32 +762,6 @@ function TranscriptionPanel(props: {
       </div>
     </div>
 
-    {props.transcriptionStatus.phase !== 'idle' && (
-      <div className="notice purple" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-          <span>{props.transcriptionStatus.message ?? props.transcriptionStatus.phase}</span>
-          {props.transcriptionStatus.progress && (
-            <span>
-              {props.transcriptionStatus.progress.done} / {props.transcriptionStatus.progress.total}
-            </span>
-          )}
-        </div>
-        {props.transcriptionStatus.progress && (
-          <div style={{ width: '100%', height: '6px', background: 'rgba(94, 92, 230, 0.15)', borderRadius: '3px', overflow: 'hidden' }}>
-            <div
-              style={{
-                height: '100%',
-                width: `${Math.min(100, Math.max(0, (props.transcriptionStatus.progress.done / props.transcriptionStatus.progress.total) * 100))}%`,
-                background: '#5e5ce6',
-                borderRadius: '3px',
-                transition: 'width .2s ease',
-              }}
-            />
-          </div>
-        )}
-      </div>
-    )}
-
     {hasAnyItems ? (
       <div className="transcription-unified-list">
         {groups.active.length > 0 && (

@@ -585,7 +585,7 @@ def process_request(request: dict[str, Any]) -> dict[str, Any]:
                 }
 
         # Kein YouTube-Untertitel gefunden → Whisper-Weg
-        if not media_url:
+        if not media_url and not request.get("media_path"):
             return {
                 "type": "error",
                 "id": job_id,
