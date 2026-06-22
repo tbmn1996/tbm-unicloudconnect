@@ -29,6 +29,36 @@ test('Kursparser bevorzugt vollständige Namen und erkennt das Semester', () => 
   assert.equal(extractSemester('Kurs ohne Zeitangabe'), null);
 });
 
+test('Kursparser nutzt die Kursnavigation und ignoriert Townsquare-Störlinks', () => {
+  const html = `
+    <div class="townsquare">
+      <a href="/moodle/course/view.php?id=99">hier</a>
+      <a href="/moodle/course/view.php?id=98">https://learnweb.example/course/view.php?id=98</a>
+    </div>
+    <ul>
+      <li class="sub-sub-menu-item">
+        <a href="/moodle/course/view.php?id=7" title="Informatik II WiSe 2025/26">Kurs öffnen</a>
+      </li>
+      <li class="sub-sub-menu-item">
+        <a href="/moodle/course/view.php?id=9">Datenbanken</a>
+      </li>
+    </ul>`;
+
+  const courses = parseCourses(html, BASE_URL);
+
+  assert.deepEqual(courses.map((course) => course.courseId), [7, 9]);
+  assert.equal(courses[0]?.name, 'Informatik II WiSe 2025/26');
+});
+
+test('Kursparser-Fallback filtert unplausible Linktexte', () => {
+  const html = `
+    <a href="/moodle/course/view.php?id=7">Informatik II</a>
+    <a href="/moodle/course/view.php?id=8">hier</a>
+    <a href="/moodle/course/view.php?id=9">de</a>`;
+
+  assert.deepEqual(parseCourses(html, BASE_URL).map((course) => course.courseId), [7]);
+});
+
 test('Kursübersicht erkennt Sections und überspringt Labels', () => {
   const html = `
     <h1>Testkurs</h1>

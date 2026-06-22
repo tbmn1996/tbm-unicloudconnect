@@ -66,15 +66,18 @@ Die Funktionalität ist in sechs strikt getrennte TypeScript-Module und einen is
 ### 5. Transcription Worker
 * **Dateipfad-Scaffold:** `transcription-worker/` (isoliertes Python-Subprojekt)
 * **Verantwortlichkeiten:**
-  * Lokales Herunterladen oder Bereitstellen von Audio-/Videodateien aus Opencast/Moodle.
+  * Verarbeitung validierter lokaler Medienpfade bzw. öffentlicher YouTube-Quellen.
   * Durchführung der Whisper-Transkription.
   * Schreiben des Transkripts als Markdown-Datei.
-  * Rückmeldung des Job-Status an die SQLite-Datenbank.
+  * JSONL-Statusrückgabe an den `TranscriptionManager`; der Worker greift nicht direkt auf SQLite oder Keychain zu.
+
+Der TypeScript-Manager unter `src/transcription/` claimt genau einen Job, lädt geschützte Medien im
+Main-Prozess, begrenzt Retries, unterstützt Cancel/Crash-Recovery und hält Worker-Cookies/Secrets vollständig fern.
 
 ### 6. MCP-Modul
 * **Dateipfad-Scaffold:** [src/mcp/index.ts](../src/mcp/index.ts)
 * **Verantwortlichkeiten:**
-  * Bereitstellung des lokalen Model Context Protocols (stdio-basiert).
+  * Bereitstellung des lokalen Model Context Protocols über stdio und Bearer-geschütztes SSE auf `127.0.0.1`.
   * Bereitstellung strukturierter read-only Abfragewerkzeuge für lokale Agenten (z. B. Claude/Codex) über das LearnWeb-Konto. Die genaue Spezifikation und Parameter der 9 MCP-Tools sind in [docs/MCP_SPEC.md](MCP_SPEC.md) dokumentiert.
 
 ---
@@ -143,6 +146,10 @@ Die Datenbank speichert den Zustand der Synchronisation. Die Tabellen sind wie f
 * `model` (TEXT - Verwendetes Whisper-Modell)
 * `duration_seconds` (INTEGER)
 * `error_code` (TEXT)
+* `recording_key` (TEXT - eindeutiger Dedup-Schlüssel)
+* `title`, `source_type`, `media_url`, `needs_auth`
+* `section_name`, `section_index`, `recording_date`
+* `retry_count` (INTEGER)
 * `created_at` (DATETIME)
 * `updated_at` (DATETIME)
 

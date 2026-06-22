@@ -1,6 +1,7 @@
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow } from 'electron';
-import { broadcastSyncStatus, registerIpcHandlers } from './ipc';
+import { broadcastSyncStatus, broadcastTranscriptionStatus, registerIpcHandlers } from './ipc';
 import { AppRuntime } from './runtime';
 import { StatusTray } from './tray';
 import { createMainWindow, markAppQuitting, showMainWindow } from './windows';
@@ -13,9 +14,26 @@ void app.whenReady().then(() => {
   app.dock?.hide();
   createMainWindow();
 
-  runtime = new AppRuntime(join(app.getPath('userData'), 'state.sqlite'), (status) => {
+  const dbPath = join(app.getPath('userData'), 'state.sqlite');
+  const mainDir = dirname(fileURLToPath(import.meta.url));
+  runtime = new AppRuntime(dbPath, (status) => {
     tray?.setStatus(status);
     broadcastSyncStatus(status);
+    if (status.state === 'idle') void runtime?.runAutoTranscription().catch(() => undefined);
+  }, {
+    workerDir: join(app.getAppPath(), 'transcription-worker'),
+    mcpEntryPath: join(mainDir, 'mcp.js'),
+    mcpCommand: process.execPath,
+    onTranscriptionStatus: (status) => {
+      broadcastTranscriptionStatus(status);
+      if (status.phase === 'error') {
+        tray?.setStatus({ state: 'error', lastRun: runtime?.sync.getStatus().lastRun ?? null, activeJobs: 0 });
+      } else if (status.phase !== 'idle') {
+        tray?.setStatus({ state: 'transcribing', lastRun: runtime?.sync.getStatus().lastRun ?? null, activeJobs: 1 });
+      } else if (runtime) {
+        tray?.setStatus(runtime.sync.getStatus());
+      }
+    },
   });
   registerIpcHandlers(runtime);
   tray = new StatusTray(showMainWindow, () => runtime?.sync.start());

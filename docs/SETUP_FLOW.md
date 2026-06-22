@@ -1,6 +1,6 @@
 # Setup-Wizard: Benutzerführung & Ablauf
 
-Dieses Dokument beschreibt die neun Schritte des Erst-Einrichtungs-Assistenten (Setup-Wizard) für TBM UniCloudConnect. Da die Anwendung ohne Terminal-Interaktion für Kommilitonen bedienbar sein muss, bildet dieser Wizard den Kern des Produkts.
+Dieses Dokument beschreibt die acht Schritte des Erst-Einrichtungs-Assistenten. Da die Anwendung ohne Terminal-Interaktion bedienbar sein muss, bildet dieser Wizard den Kern des Produkts.
 
 ---
 
@@ -46,7 +46,7 @@ Dieses Dokument beschreibt die neun Schritte des Erst-Einrichtungs-Assistenten (
 
 ---
 
-## Schritt 4: Kurse laden
+## Schritt 4: Kurse laden und Auswahl festlegen
 
 ### Ziele:
 * Auflistung aller im LearnWeb belegten Kurse für den Anwender.
@@ -58,21 +58,7 @@ Dieses Dokument beschreibt die neun Schritte des Erst-Einrichtungs-Assistenten (
 
 ---
 
-## Schritt 5: Sync-Auswahl verfeinern
-
-### Ziele:
-* Feineinstellungs-Regeln für Ordner, Themen oder einzelne Dateien festlegen.
-
-### Konzept:
-* Der Anwender kann pro ausgewähltem Kurs bestimmen:
-  * **Gesamten Kurs synchronisieren** (Standard: Alle künftigen und aktuellen PDFs, Ordner und URLs werden automatisch geladen).
-  * **Nur bestimmte Abschnitte/Themen** (Wochen-Auswahl).
-  * **Nur bestimmte Dateitypen** (z. B. nur PDFs, keine ZIPs).
-* Diese Auswahlregeln werden in der Tabelle `selection_rules` hinterlegt.
-
----
-
-## Schritt 6: Transkription konfigurieren
+## Schritt 5: Transkription konfigurieren
 
 ### Ziele:
 * Optionale Aktivierung und Einrichtung des lokalen Transkriptions-Workers.
@@ -86,19 +72,19 @@ Dieses Dokument beschreibt die neun Schritte des Erst-Einrichtungs-Assistenten (
 
 ---
 
-## Schritt 7: Optionaler MCP-Zugriff für Claude
+## Schritt 6: Optionaler MCP-Zugriff für Claude
 
 ### Ziele:
 * Erklärung und Einrichtung der lokalen Schnittstelle für KI-Agenten.
 
 ### Wichtiger Hinweis im UI:
 * *„Der MCP-Connector erlaubt es Programmen wie Claude oder Codex, read-only auf dein LearnWeb-Konto zuzugreifen. Dieser Zugriff ist nicht auf die lokal ausgewählten Kurse beschränkt, sondern betrifft dein gesamtes Profil.“*
-* *„Der MCP-Zugriff funktioniert nur lokal auf diesem Mac und nur, wenn TBM UniCloudConnect aktiv ausgeführt wird.“*
-* **Aktion**: Der Schritt ist überspringbar. Bei Aktivierung bereitet das Backend die lokale `stdio`-Konfiguration vor und trägt den Server in der Claude-Konfigurationsdatei des Systems ein.
+* *„Der MCP-Zugriff ist standardmäßig ausschließlich lokal auf diesem Mac erreichbar.“*
+* **Aktion**: Der Schritt ist überspringbar. Aktivieren trägt die `stdio`-Konfiguration in Claude Desktop ein und startet den Bearer-geschützten SSE-Endpunkt auf `127.0.0.1`.
 
 ---
 
-## Schritt 8: Kontrollierter Testlauf
+## Schritt 7: Kontrollierter Testlauf
 
 ### Ziele:
 * Verifikation der gesamten Kette vor Aktivierung des Automatikbetriebs.
@@ -116,7 +102,7 @@ Dieses Dokument beschreibt die neun Schritte des Erst-Einrichtungs-Assistenten (
 
 ---
 
-## Schritt 9: Sync-Modus wählen
+## Schritt 8: Sync-Modus wählen
 
 ### Ziele:
 * Festlegung, wie und wann die Synchronisation künftig im Hintergrund laufen soll.
@@ -127,4 +113,4 @@ Dieses Dokument beschreibt die neun Schritte des Erst-Einrichtungs-Assistenten (
 * **Periodisch / Zeitgesteuert**: Täglicher Abgleich oder stündliches Polling.
 * **macOS-Login-Item**: Optionale Checkbox *„Beim Anmelden starten“*, um die App automatisch beim macOS-Systemstart im Hintergrund zu laden.
 
-*Der automatische Hintergrundsync wird erst freigeschaltet, wenn Schritt 8 (Testlauf) erfolgreich abgeschlossen wurde.*
+*Der automatische Hintergrundsync wird erst freigeschaltet, wenn Schritt 7 erfolgreich abgeschlossen wurde.*

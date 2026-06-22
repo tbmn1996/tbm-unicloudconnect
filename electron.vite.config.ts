@@ -19,7 +19,10 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin({ exclude: ['axios-cookiejar-support', 'tough-cookie'] })],
     build: {
       rollupOptions: {
-        input: { index: resolve(import.meta.dirname, 'src/main/index.ts') },
+        input: {
+          index: resolve(import.meta.dirname, 'src/main/index.ts'),
+          mcp: resolve(import.meta.dirname, 'src/mcp/server-stdio.ts'),
+        },
         output: { format: 'es' },
       },
     },

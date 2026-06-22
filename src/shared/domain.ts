@@ -32,7 +32,7 @@ export type DownloadJobStatus =
   | 'skipped_duplicate'
   | 'skipped_too_large';
 
-/** Zustände eines Transkriptions-Jobs (docs/MVP1_SCOPE.md §3; erst im späteren Schnitt aktiv). */
+/** Zustände eines lokalen Transkriptions-Jobs (docs/MVP1_SCOPE.md §3). */
 export type TranscriptJobStatus =
   | 'pending'
   | 'claimed'
@@ -57,7 +57,7 @@ export type SyncTrigger = 'manual' | 'startup' | 'scheduled';
 export type SelectionScope = 'course' | 'section' | 'activity' | 'modtype';
 
 /** Statusbar-/Tray-Zustand der App (für das Menüleisten-Icon). */
-export type TrayState = 'idle' | 'syncing' | 'error' | 'needs_setup';
+export type TrayState = 'idle' | 'syncing' | 'transcribing' | 'error' | 'needs_setup';
 
 // Laufzeit-Arrays — gespiegelt in den CHECK-Constraints der DDL und nutzbar
 // für Validierung/Tests. Reihenfolge identisch zu den Union-Typen oben.
@@ -83,6 +83,45 @@ export const FILE_ASSET_STATUSES = [
 export const SYNC_RUN_STATUSES = ['running', 'success', 'failed', 'warnings'] as const satisfies readonly SyncRunStatus[];
 export const SYNC_TRIGGERS = ['manual', 'startup', 'scheduled'] as const satisfies readonly SyncTrigger[];
 export const SELECTION_SCOPES = ['course', 'section', 'activity', 'modtype'] as const satisfies readonly SelectionScope[];
+
+// ---------------------------------------------------------------------------
+// Transkription (Strang A) — Enums + Konstanten
+// ---------------------------------------------------------------------------
+
+/** Quelle einer transkribierbaren Aufzeichnung. */
+export type RecordingSourceKind = 'opencast' | 'youtube' | 'media';
+
+/** Transkriptionsmodus (Setup-Schritt 5 / Wizard-Index 4). */
+export type TranscriptionMode = 'none' | 'manual' | 'auto';
+
+/** Sprache der Transkription ('auto' = Whisper-Spracherkennung). */
+export type TranscriptionLanguage = 'de' | 'en' | 'auto';
+
+/** Whisper-Modellgröße (Intel mappt 'large-v3-turbo' → 'large-v3', siehe Worker). */
+export type TranscriptionModel = 'base' | 'small' | 'large-v3-turbo';
+
+/** Phase der Transkriptions-Queue (Tray + Dashboard). */
+export type TranscriptionPhase =
+  | 'idle'
+  | 'scanning'
+  | 'downloading'
+  | 'transcribing'
+  | 'writing'
+  | 'error';
+
+export const RECORDING_SOURCE_KINDS = ['opencast', 'youtube', 'media'] as const satisfies readonly RecordingSourceKind[];
+export const TRANSCRIPTION_MODES = ['none', 'manual', 'auto'] as const satisfies readonly TranscriptionMode[];
+export const TRANSCRIPTION_LANGUAGES = ['de', 'en', 'auto'] as const satisfies readonly TranscriptionLanguage[];
+export const TRANSCRIPTION_MODELS = ['base', 'small', 'large-v3-turbo'] as const satisfies readonly TranscriptionModel[];
+
+// ---------------------------------------------------------------------------
+// MCP (Strang B) — Transport
+// ---------------------------------------------------------------------------
+
+/** Transportart des optionalen lokalen MCP-Servers. */
+export type McpTransport = 'stdio' | 'sse';
+
+export const MCP_TRANSPORTS = ['stdio', 'sse'] as const satisfies readonly McpTransport[];
 
 // ---------------------------------------------------------------------------
 // Entitäten (1:1 zum SQLite-Schema, aber camelCase für die TS-/IPC-Schicht)
@@ -182,6 +221,23 @@ export interface TranscriptJob {
   errorCode: string | null;
   createdAt: string;
   updatedAt: string;
+  // --- Schema-v2-Erweiterungen (Migration MIGRATIONS[2]) ---
+  /** Stabiler Dedup-Schlüssel der Aufzeichnung (eindeutig). */
+  recordingKey: string | null;
+  /** Anzeigetitel der Aufzeichnung. */
+  title: string | null;
+  /** Quelltyp der Aufzeichnung. */
+  sourceType: RecordingSourceKind | null;
+  /** Roh-URL der Medienquelle (Opencast/YouTube/Media). */
+  mediaUrl: string | null;
+  /** Benötigt der Download eine authentifizierte LearnWeb-Session? */
+  needsAuth: boolean;
+  sectionName: string | null;
+  sectionIndex: number | null;
+  /** Aufzeichnungsdatum (ISO) oder null, falls unbekannt. */
+  recordingDate: string | null;
+  /** Anzahl der automatischen Wiederholversuche. */
+  retryCount: number;
 }
 
 export interface SyncRun {
@@ -246,4 +302,77 @@ export interface SyncStatus {
 export interface AppSettings {
   syncIntervalMinutes: number | null;
   defaultLibraryPath: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Transkription — View-/IPC-Typen
+// ---------------------------------------------------------------------------
+
+/** Eine erkannte, transkribierbare Aufzeichnung (Ergebnis des Scans). */
+export interface RecordingCandidate {
+  /** Stabiler Dedup-Schlüssel (z. B. Opencast-Event-ID / YouTube-ID / URL-Hash). */
+  recordingKey: string;
+  courseId: number;
+  activityCmid: number | null;
+  title: string;
+  sourceKind: RecordingSourceKind;
+  /** Quelle des Mediums; wird NICHT an den Worker geloggt. */
+  mediaUrl: string;
+  /** Benötigt eine authentifizierte LearnWeb-Session (Cookies bleiben im Main-Prozess). */
+  needsAuth: boolean;
+  /** Sind (manuelle/automatische) Untertitel verfügbar? (YouTube/Opencast) */
+  hasSubtitles: boolean;
+  sectionName: string | null;
+  sectionIndex: number | null;
+  recordingDate: string | null;
+}
+
+/** Persistierte Transkriptions-Einstellungen (settings-Tabelle). */
+export interface TranscriptionSettings {
+  mode: TranscriptionMode;
+  language: TranscriptionLanguage;
+  model: TranscriptionModel;
+}
+
+/** Zustand des verwalteten Python-Worker (Setup-Schritt 5). */
+export interface TranscriptionWorkerStatus {
+  /** Ist die isolierte uv-/Python-Umgebung eingerichtet? */
+  installed: boolean;
+  /** Aktives Backend je nach CPU-Architektur (arm64 → mlx, x86_64 → faster-whisper). */
+  backend: 'mlx-whisper' | 'faster-whisper' | null;
+  /** Bereits heruntergeladene Modelle. */
+  downloadedModels: string[];
+  message?: string;
+}
+
+/** Live-Status der Transkriptions-Queue (Event evt:transcriptionStatus). */
+export interface TranscriptionStatus {
+  phase: TranscriptionPhase;
+  /** Aktuell verarbeiteter Job oder null. */
+  activeJob: TranscriptJob | null;
+  queued: number;
+  done: number;
+  failed: number;
+  message?: string;
+  /** Fortschritt innerhalb des aktiven Jobs (z. B. transkribierte Sekunden). */
+  progress?: { done: number; total: number };
+}
+
+// ---------------------------------------------------------------------------
+// MCP — View-/IPC-Typen
+// ---------------------------------------------------------------------------
+
+/** Laufzeit-/Verbindungsinfo des optionalen MCP-Servers (Dashboard/Settings). */
+export interface McpRuntimeStatus {
+  enabled: boolean;
+  /** In ~/Library/Application Support/Claude/claude_desktop_config.json eingetragen? */
+  stdioRegistered: boolean;
+  /** Läuft der lokale SSE/HTTP-Server? */
+  sseRunning: boolean;
+  /** Aktive lokale SSE-URL (nur 127.0.0.1), z. B. http://127.0.0.1:3000/sse. */
+  sseUrl: string | null;
+  /** Bearer-Token zum Kopieren in der UI (Zugriffsschutz des SSE-Endpunkts). */
+  token: string | null;
+  configuredAt: string | null;
+  lastCheckedAt: string | null;
 }

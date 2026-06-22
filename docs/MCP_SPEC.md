@@ -1,6 +1,6 @@
 # Spezifikation: Model Context Protocol (MCP) Modul
 
-Dieses Dokument beschreibt die exakten Werkzeuge (Tools) und Spezifikationen des optionalen, lokalen MCP-Moduls von TBM UniCloudConnect. Das Modul basiert auf dem stdio-Transport und stellt read-only Werkzeuge zur Verfügung, mit denen KI-Agenten (wie Claude oder Codex) direkt auf das LearnWeb-Profil des Nutzers zugreifen können.
+Dieses Dokument beschreibt die exakten Werkzeuge und Spezifikationen des optionalen MCP-Moduls. Beide lokalen Transports nutzen dieselben read-only Werkzeuge: `stdio` für Claude Desktop und ein HTTP/SSE-Endpunkt für lokale Clients.
 
 ---
 
@@ -9,7 +9,14 @@ Dieses Dokument beschreibt die exakten Werkzeuge (Tools) und Spezifikationen des
 * **Optional**: Das Modul ist standardmäßig deaktiviert und muss vom Anwender im Dashboard explizit eingeschaltet werden.
 * **Keine Scope-Einschränkung**: Der MCP-Zugriff ist *nicht* auf die lokal für den Synchronisationslauf ausgewählten Kurse beschränkt, sondern ermöglicht einen lesenden Zugriff auf das gesamte LearnWeb-Konto des Nutzers.
 * **Read-only**: Alle Werkzeuge sind strikt lesend implementiert. Es gibt keine Schreibwerkzeuge.
-* **Local-only**: Die Kommunikation läuft rein lokal über stdio zwischen der App (bzw. dem Dämon) und dem KI-Client auf dem Rechner des Nutzers.
+* **Local-only**: `stdio` läuft als lokaler Unterprozess. SSE bindet ausschließlich an `127.0.0.1`, benötigt auf jeder Anfrage ein zufälliges Bearer-Token aus der Keychain und stoppt beim Deaktivieren bzw. App-Ende.
+* **Explizite Aktivierung**: Aktivieren trägt den eigenen Server-Key idempotent in die Claude-Desktop-Konfiguration ein und startet SSE. Deaktivieren entfernt nur diesen Eintrag und stoppt den Server.
+* **Keine automatische Cloud-Exponierung**: Cloud-Clients können `127.0.0.1` nicht direkt erreichen. Ein externer Tunnel ist nicht Teil der App und würde das Local-only-Vertrauensmodell verlassen.
+
+## Transports
+
+1. **stdio**: eigener gebauter Prozesseinstieg; der read-only SQLite-Pfad wird explizit über `UCC_DB_PATH` übergeben.
+2. **SSE/HTTP**: `GET /sse` und transportverwaltete Nachrichten, ausschließlich Loopback und Bearer-geschützt; bei Portkonflikt wird ein Folgeport gewählt.
 
 ---
 

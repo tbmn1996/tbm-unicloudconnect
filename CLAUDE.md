@@ -5,7 +5,7 @@
 ## Zweck
 
 Lokaler, read-only LearnWeb-Sync fuer macOS als Electron-App mit React-Dashboard, SQLite-State,
-macOS-Keychain, LearnWeb-Core, Sync-Engine und Local-Library. MCP und Transkription sind spätere Schnitte.
+macOS-Keychain, LearnWeb-Core, Sync-Engine, Local-Library, lokale Transkription und optionales MCP.
 
 ## Guardrails (MVP 1)
 
@@ -16,12 +16,12 @@ macOS-Keychain, LearnWeb-Core, Sync-Engine und Local-Library. MCP und Transkript
 - **Credentials**: Passwörter und Zugangsdaten werden ausschließlich in der macOS Keychain (Schlüsselbund) gesichert. Keine Klartext-Credentials in `.env`, der SQLite-DB oder Logs.
 - **Zustand (State)**: Der Anwendungszustand wird in einer lokalen SQLite-Datenbank verwaltet.
 - **Output**: Die synchronisierten Vorlesungsdateien werden in einer lokalen Ordnerstruktur abgelegt. Aufzeichnungstranskripte werden als Markdown-Dateien (.md) ausgegeben.
-- **MCP-Schnittstelle**: Der Model Context Protocol (MCP) Connector ist optional, lokal, stdio-basiert, muss explizit vom Nutzer im Dashboard aktiviert werden und ist nicht auf die lokal ausgewählte Sync-Auswahl beschränkt (sondern erlaubt kontoweiten Lesezugriff).
+- **MCP-Schnittstelle**: Der MCP-Connector ist optional, lokal und muss explizit im Dashboard aktiviert werden. Er bietet stdio für Claude Desktop sowie einen nur an `127.0.0.1` gebundenen, Bearer-geschützten SSE-Endpunkt. Er ist nicht auf die lokale Sync-Auswahl beschränkt, sondern erlaubt kontoweiten Lesezugriff. Eine externe Exponierung wird nicht automatisiert und verlässt das Local-only-Vertrauensmodell.
 - **Referenzspezifikationen**: Folgende Dokumente sind die kanonische Projektbeschreibung und für Agenten bindend:
   - [docs/NORDSTERN.md](docs/NORDSTERN.md) (Produktziel und Datenschutzmodell)
   - [docs/MVP1_SCOPE.md](docs/MVP1_SCOPE.md) (Harte Scope-Grenzen und Tabellen-Zustände)
   - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (App-Modell, Modulzuständigkeiten und SQLite-Schema)
-  - [docs/SETUP_FLOW.md](docs/SETUP_FLOW.md) (9 Schritte des Setup-Wizards)
+  - [docs/SETUP_FLOW.md](docs/SETUP_FLOW.md) (8 Schritte des Setup-Wizards)
   - [docs/MCP_SPEC.md](docs/MCP_SPEC.md) (Spezifikation der 9 read-only MCP-Tools)
 
 ## Stack

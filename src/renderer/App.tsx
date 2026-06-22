@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react';
-import type { AppState, Course, FileAsset, SyncStatus } from '../shared/domain';
+import type {
+  AppState,
+  Course,
+  FileAsset,
+  McpRuntimeStatus,
+  RecordingCandidate,
+  SyncStatus,
+  TranscriptJob,
+  TranscriptionSettings,
+  TranscriptionStatus,
+  TranscriptionWorkerStatus,
+} from '../shared/domain';
 import './app.css';
 
 const STEPS = [
@@ -17,6 +28,16 @@ type DashboardTab = 'overview' | 'courses' | 'transcripts' | 'library' | 'settin
 type TestState = 'idle' | 'running' | 'success' | 'error';
 
 const EMPTY_SYNC: SyncStatus = { state: 'idle', lastRun: null, activeJobs: 0 };
+const EMPTY_TRANSCRIPTION: TranscriptionStatus = {
+  phase: 'idle', activeJob: null, queued: 0, done: 0, failed: 0,
+};
+const DEFAULT_TRANSCRIPTION_SETTINGS: TranscriptionSettings = {
+  mode: 'none', language: 'de', model: 'small',
+};
+const EMPTY_MCP: McpRuntimeStatus = {
+  enabled: false, stdioRegistered: false, sseRunning: false, sseUrl: null,
+  token: null, configuredAt: null, lastCheckedAt: null,
+};
 
 export function App(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
@@ -31,6 +52,15 @@ export function App(): React.JSX.Element {
   const [courses, setCourses] = useState<Course[]>([]);
   const [files, setFiles] = useState<FileAsset[]>([]);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(EMPTY_SYNC);
+  const [transcriptionSettings, setTranscriptionSettings] = useState(DEFAULT_TRANSCRIPTION_SETTINGS);
+  const [workerStatus, setWorkerStatus] = useState<TranscriptionWorkerStatus>({
+    installed: false, backend: null, downloadedModels: [],
+  });
+  const [transcriptionStatus, setTranscriptionStatus] = useState(EMPTY_TRANSCRIPTION);
+  const [recordings, setRecordings] = useState<RecordingCandidate[]>([]);
+  const [selectedRecordingKeys, setSelectedRecordingKeys] = useState<Set<string>>(new Set());
+  const [transcriptJobs, setTranscriptJobs] = useState<TranscriptJob[]>([]);
+  const [mcpStatus, setMcpStatus] = useState<McpRuntimeStatus>(EMPTY_MCP);
   const [testState, setTestState] = useState<TestState>('idle');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -41,12 +71,23 @@ export function App(): React.JSX.Element {
       if (active) setSyncStatus(status);
       if (status.state !== 'syncing') void loadDashboardData();
     });
+    const unsubscribeTranscription = window.api.onTranscriptionStatus((status) => {
+      if (!active) return;
+      setTranscriptionStatus(status);
+      if (status.phase === 'idle' || status.phase === 'error') {
+        void window.api.getTranscriptJobs().then(setTranscriptJobs);
+      }
+    });
     void Promise.all([
       window.api.getAppState(),
       window.api.getCourses(),
       window.api.getLibraryItems(),
       window.api.getSyncStatus(),
-    ]).then(([state, storedCourses, libraryItems, status]) => {
+      window.api.getTranscriptionSettings(),
+      window.api.getTranscriptionWorkerStatus(),
+      window.api.getTranscriptJobs(),
+      window.api.getMcpRuntimeStatus(),
+    ]).then(([state, storedCourses, libraryItems, status, transcription, worker, jobs, mcp]) => {
       if (!active) return;
       setAppState(state);
       setDisplayName(state.profile?.displayName ?? 'Thomas');
@@ -55,6 +96,10 @@ export function App(): React.JSX.Element {
       setCourses(storedCourses);
       setFiles(libraryItems);
       setSyncStatus(status);
+      setTranscriptionSettings(transcription);
+      setWorkerStatus(worker);
+      setTranscriptJobs(jobs);
+      setMcpStatus(mcp);
       setLoading(false);
     }).catch((error: unknown) => {
       if (active) {
@@ -65,6 +110,7 @@ export function App(): React.JSX.Element {
     return () => {
       active = false;
       unsubscribe();
+      unsubscribeTranscription();
     };
   }, []);
 
@@ -103,6 +149,7 @@ export function App(): React.JSX.Element {
       if (!result.ok) throw new Error(result.message ?? 'Login fehlgeschlagen.');
       setLoginVerified(true);
       setPassword('');
+      setAppState(await window.api.getAppState());
       await refreshCourses();
     } catch (error) {
       setLoginVerified(false);
@@ -183,10 +230,114 @@ export function App(): React.JSX.Element {
     }
   }
 
+  async function saveTranscriptionSettings(settings: TranscriptionSettings): Promise<void> {
+    setBusy(true);
+    setMessage(null);
+    try {
+      setTranscriptionSettings(await window.api.setTranscriptionSettings(settings));
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setupWorker(): Promise<void> {
+    setBusy(true);
+    setMessage(null);
+    try {
+      setWorkerStatus(await window.api.setupTranscriptionWorker());
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function scanRecordings(): Promise<void> {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const found = await window.api.scanRecordings();
+      setRecordings(found);
+      setSelectedRecordingKeys(new Set(found.map((recording) => recording.recordingKey)));
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function enqueueRecordings(): Promise<void> {
+    setBusy(true);
+    setMessage(null);
+    try {
+      setTranscriptJobs(await window.api.enqueueTranscriptions({
+        recordingKeys: [...selectedRecordingKeys],
+      }));
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startTranscriptionQueue(): Promise<void> {
+    await window.api.startTranscriptionQueue();
+    setTranscriptJobs(await window.api.getTranscriptJobs());
+  }
+
+  async function cancelTranscription(): Promise<void> {
+    await window.api.cancelTranscription();
+    setTranscriptJobs(await window.api.getTranscriptJobs());
+  }
+
+  async function retryTranscription(jobId: number): Promise<void> {
+    await window.api.retryTranscription({ jobId });
+    await startTranscriptionQueue();
+  }
+
+  async function setMcpEnabled(enabled: boolean): Promise<void> {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const next = await window.api.setMcpEnabled({ enabled });
+      setMcpStatus(next);
+      setAppState((current) => current ? { ...current, mcpEnabled: next.enabled } : current);
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function regenerateMcpToken(): Promise<void> {
+    setMcpStatus(await window.api.regenerateMcpToken());
+  }
+
+  async function handleLogout(): Promise<void> {
+    if (!confirm('Möchtest du dich wirklich abmelden? Deine Zugangsdaten werden gelöscht.')) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await window.api.logout();
+      setAppState(await window.api.getAppState());
+      setLoginVerified(false);
+      setMcpStatus(EMPTY_MCP);
+      setUsername('');
+      setPassword('');
+      setStep(2);
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) return <div className="loading">UniCloudConnect wird geladen …</div>;
   if (!appState) return <div className="loading error">Die App konnte nicht initialisiert werden.</div>;
 
-  if (!appState.isSetupComplete) {
+  if (!appState.isSetupComplete || !appState.hasCredentials) {
     return (
       <div className="setup-shell">
         <aside className="setup-sidebar">
@@ -227,6 +378,12 @@ export function App(): React.JSX.Element {
               selectedCount={selectedCourses.length}
               busy={busy}
               finishSetup={finishSetup}
+              transcriptionSettings={transcriptionSettings}
+              saveTranscriptionSettings={saveTranscriptionSettings}
+              workerStatus={workerStatus}
+              setupWorker={setupWorker}
+              mcpStatus={mcpStatus}
+              setMcpEnabled={setMcpEnabled}
             />
             {message && <div className="notice error" role="alert">{message}</div>}
           </div>
@@ -256,6 +413,24 @@ export function App(): React.JSX.Element {
       startSync={startSync}
       message={message}
       busy={busy}
+      transcriptionSettings={transcriptionSettings}
+      saveTranscriptionSettings={saveTranscriptionSettings}
+      workerStatus={workerStatus}
+      setupWorker={setupWorker}
+      transcriptionStatus={transcriptionStatus}
+      recordings={recordings}
+      selectedRecordingKeys={selectedRecordingKeys}
+      setSelectedRecordingKeys={setSelectedRecordingKeys}
+      transcriptJobs={transcriptJobs}
+      scanRecordings={scanRecordings}
+      enqueueRecordings={enqueueRecordings}
+      startTranscriptionQueue={startTranscriptionQueue}
+      cancelTranscription={cancelTranscription}
+      retryTranscription={retryTranscription}
+      mcpStatus={mcpStatus}
+      setMcpEnabled={setMcpEnabled}
+      regenerateMcpToken={regenerateMcpToken}
+      handleLogout={handleLogout}
     />
   );
 }
@@ -280,6 +455,12 @@ interface SetupStepProps {
   selectedCount: number;
   busy: boolean;
   finishSetup(): Promise<void>;
+  transcriptionSettings: TranscriptionSettings;
+  saveTranscriptionSettings(settings: TranscriptionSettings): Promise<void>;
+  workerStatus: TranscriptionWorkerStatus;
+  setupWorker(): Promise<void>;
+  mcpStatus: McpRuntimeStatus;
+  setMcpEnabled(enabled: boolean): Promise<void>;
 }
 
 function SetupStep(props: SetupStepProps): React.JSX.Element {
@@ -317,14 +498,35 @@ function SetupStep(props: SetupStepProps): React.JSX.Element {
         <div className="muted">{props.selectedCount} von {props.courses.length} Kursen ausgewählt</div>
       </>}
       {props.step === 4 && <>
-        <p>Aufzeichnungen werden in einem späteren Schnitt lokal in Markdown umgewandelt. Für MVP 1 bleibt diese Funktion bewusst deaktiviert.</p>
-        <OptionCard title="Keine Transkription" text="Nur unterstützte Kursdateien herunterladen." selected />
-        <OptionCard title="Lokale Transkription" text="Noch nicht verfügbar." disabled />
+        <p>Aufzeichnungen werden ausschließlich auf diesem Mac verarbeitet und als Markdown in der Kursbibliothek gespeichert.</p>
+        <div className="option-stack">
+          {(['none', 'manual', 'auto'] as const).map((mode) => (
+            <OptionCard
+              key={mode}
+              title={({ none: 'Keine Transkription', manual: 'Manuell starten', auto: 'Automatisch einreihen' })[mode]}
+              text={({ none: 'Nur Kursdateien synchronisieren.', manual: 'Aufzeichnungen im Dashboard auswählen.', auto: 'Neue Aufzeichnungen automatisch vorbereiten.' })[mode]}
+              selected={props.transcriptionSettings.mode === mode}
+              onClick={() => void props.saveTranscriptionSettings({ ...props.transcriptionSettings, mode })}
+            />
+          ))}
+        </div>
+        {props.transcriptionSettings.mode !== 'none' && <>
+          <div className="form-grid compact">
+            <label>Sprache<select value={props.transcriptionSettings.language} onChange={(event) => void props.saveTranscriptionSettings({ ...props.transcriptionSettings, language: event.target.value as TranscriptionSettings['language'] })}><option value="de">Deutsch</option><option value="en">Englisch</option><option value="auto">Automatisch</option></select></label>
+            <label>Modell<select value={props.transcriptionSettings.model} onChange={(event) => void props.saveTranscriptionSettings({ ...props.transcriptionSettings, model: event.target.value as TranscriptionSettings['model'] })}><option value="base">Base</option><option value="small">Small</option><option value="large-v3-turbo">Large v3 Turbo</option></select></label>
+          </div>
+          <div className={props.workerStatus.installed ? 'notice success' : 'notice'}>
+            Worker: {props.workerStatus.installed ? `bereit (${props.workerStatus.backend ?? 'lokal'})` : 'noch nicht eingerichtet'}
+          </div>
+          {!props.workerStatus.installed && <button className="button secondary" type="button" disabled={props.busy} onClick={() => void props.setupWorker()}>Lokalen Worker einrichten</button>}
+        </>}
       </>}
       {props.step === 5 && <>
-        <p>MCP ermöglicht lokalen KI-Agenten kontoweiten, read-only Zugriff auf LearnWeb. Die Einrichtung folgt in einem späteren Schnitt und wird nie still aktiviert.</p>
-        <div className="notice purple"><strong>Wichtig:</strong> MCP wäre nicht auf deine Sync-Auswahl begrenzt. Aktueller Status: inaktiv.</div>
-        <OptionCard title="MCP deaktiviert lassen" text="Empfohlener Zustand für diesen Vertikalschnitt." selected />
+        <p>MCP ermöglicht KI-Agenten kontoweiten, strikt lesenden Zugriff auf LearnWeb. Die Funktion bleibt opt-in und wird nie still aktiviert.</p>
+        <div className="notice purple"><strong>Wichtig:</strong> MCP ist nicht auf deine Sync-Auswahl begrenzt. SSE bindet ausschließlich an 127.0.0.1 und ist mit einem Token geschützt.</div>
+        <OptionCard title="MCP deaktiviert" text="Kein Agentenzugriff." selected={!props.mcpStatus.enabled} onClick={() => void props.setMcpEnabled(false)} />
+        <OptionCard title="MCP aktivieren" text="Claude Desktop (stdio) und lokaler SSE-Endpunkt." selected={props.mcpStatus.enabled} onClick={() => void props.setMcpEnabled(true)} />
+        {props.mcpStatus.enabled && <McpConnectionDetails status={props.mcpStatus} />}
       </>}
       {props.step === 6 && <>
         <p>Wir prüfen Login, Kursliste, Auswahl und Schreibrechte gemeinsam.</p>
@@ -354,6 +556,24 @@ function Dashboard(props: {
   startSync(): Promise<void>;
   message: string | null;
   busy: boolean;
+  transcriptionSettings: TranscriptionSettings;
+  saveTranscriptionSettings(settings: TranscriptionSettings): Promise<void>;
+  workerStatus: TranscriptionWorkerStatus;
+  setupWorker(): Promise<void>;
+  transcriptionStatus: TranscriptionStatus;
+  recordings: RecordingCandidate[];
+  selectedRecordingKeys: Set<string>;
+  setSelectedRecordingKeys(keys: Set<string>): void;
+  transcriptJobs: TranscriptJob[];
+  scanRecordings(): Promise<void>;
+  enqueueRecordings(): Promise<void>;
+  startTranscriptionQueue(): Promise<void>;
+  cancelTranscription(): Promise<void>;
+  retryTranscription(jobId: number): Promise<void>;
+  mcpStatus: McpRuntimeStatus;
+  setMcpEnabled(enabled: boolean): Promise<void>;
+  regenerateMcpToken(): Promise<void>;
+  handleLogout(): Promise<void>;
 }): React.JSX.Element {
   const selected = props.courses.filter((course) => course.isSelected).length;
   return <div className="dashboard-shell">
@@ -367,7 +587,7 @@ function Dashboard(props: {
         ['library', 'Bibliothek'], ['settings', 'Einstellungen'],
       ] as Array<[DashboardTab, string]>).map(([id, label]) =>
         <button key={id} type="button" className={props.tab === id ? 'nav active' : 'nav'} onClick={() => props.setTab(id)}>{label}</button>)}
-      <div className="sidebar-foot">MCP inaktiv<br /><small>lokal · read-only</small></div>
+      <div className="sidebar-foot">MCP {props.mcpStatus.enabled ? 'aktiv' : 'inaktiv'}<br /><small>lokal · read-only</small></div>
     </aside>
     <main className="dashboard-main">
       <header><div><h2>{dashboardTitle(props.tab)}</h2><p>{props.syncStatus.lastRun?.finishedAt ? `Letzter Sync: ${formatDate(props.syncStatus.lastRun.finishedAt)}` : 'Noch kein vollständiger Sync'}</p></div>
@@ -385,23 +605,63 @@ function Dashboard(props: {
           <div className="panel"><h3>Lokale Bibliothek</h3><p>{props.libraryPath || 'Kein Pfad konfiguriert'}</p><button className="text-button" type="button" onClick={() => void window.api.openLibraryFolder()}>Im Finder öffnen</button></div>
         </>}
         {props.tab === 'courses' && <><div className="split-heading"><p>{selected} Kurse werden synchronisiert.</p><button className="button secondary" type="button" disabled={props.busy} onClick={() => void props.refreshCourses()}>Aktualisieren</button></div><CourseList courses={props.courses} toggleCourse={props.toggleCourse} /></>}
-        {props.tab === 'transcripts' && <EmptyState title="Transkription folgt" text="Dieser Vertikalschnitt synchronisiert Dateien. Der lokale Worker wird später angebunden." />}
+        {props.tab === 'transcripts' && <TranscriptionPanel {...props} />}
         {props.tab === 'library' && (props.files.length ? <div className="file-list">{props.files.map((file) => <div key={file.id}><div><strong>{file.filenameLocal}</strong><span>{file.localPath}</span></div><small>{formatBytes(file.sizeBytes)} · {file.status}</small></div>)}</div> : <EmptyState title="Noch keine Dateien" text="Starte den ersten Sync, um die lokale Bibliothek zu füllen." />)}
-        {props.tab === 'settings' && <div className="panel settings"><h3>Speicherort</h3><p>{props.libraryPath}</p><h3>Synchronisation</h3><p>Manuell über Dashboard oder Statusbar.</p><h3>MCP</h3><p>Inaktiv. Die Einrichtung ist nicht Teil dieses Vertikalschnitts.</p></div>}
+        {props.tab === 'settings' && <div className="panel settings"><h3>Speicherort</h3><p>{props.libraryPath}</p><h3>Synchronisation</h3><p>Manuell über Dashboard oder Statusbar.</p><h3>Transkription</h3><p>Modus: {props.transcriptionSettings.mode} · Modell: {props.transcriptionSettings.model} · Worker: {props.workerStatus.installed ? 'bereit' : 'nicht eingerichtet'}</p>{!props.workerStatus.installed && <button className="button secondary" type="button" onClick={() => void props.setupWorker()}>Worker einrichten</button>}<h3>MCP</h3><button className={props.mcpStatus.enabled ? 'button secondary' : 'button primary'} type="button" disabled={props.busy} onClick={() => void props.setMcpEnabled(!props.mcpStatus.enabled)}>{props.mcpStatus.enabled ? 'MCP deaktivieren' : 'MCP aktivieren'}</button>{props.mcpStatus.enabled && <><McpConnectionDetails status={props.mcpStatus} /><button className="text-button" type="button" onClick={() => void props.regenerateMcpToken()}>Bearer-Token erneuern</button></>}<h3>Konto</h3><button className="button danger" type="button" disabled={props.busy} onClick={() => void props.handleLogout()}>Abmelden</button><p><small>Entfernt die gespeicherten Zugangsdaten aus der Keychain und deaktiviert MCP.</small></p></div>}
       </section>
     </main>
   </div>;
 }
 
+function TranscriptionPanel(props: {
+  busy: boolean;
+  workerStatus: TranscriptionWorkerStatus;
+  transcriptionStatus: TranscriptionStatus;
+  recordings: RecordingCandidate[];
+  selectedRecordingKeys: Set<string>;
+  setSelectedRecordingKeys(keys: Set<string>): void;
+  transcriptJobs: TranscriptJob[];
+  scanRecordings(): Promise<void>;
+  enqueueRecordings(): Promise<void>;
+  startTranscriptionQueue(): Promise<void>;
+  cancelTranscription(): Promise<void>;
+  retryTranscription(jobId: number): Promise<void>;
+}): React.JSX.Element {
+  const toggleRecording = (key: string): void => {
+    const next = new Set(props.selectedRecordingKeys);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    props.setSelectedRecordingKeys(next);
+  };
+  return <>
+    <div className="split-heading">
+      <div><p>Worker: {props.workerStatus.installed ? `bereit (${props.workerStatus.backend ?? 'lokal'})` : 'nicht eingerichtet'}</p><small className="muted">Queue: {props.transcriptionStatus.queued} · Fertig: {props.transcriptionStatus.done} · Fehler: {props.transcriptionStatus.failed}</small></div>
+      <div className="action-row"><button className="button secondary" type="button" disabled={props.busy} onClick={() => void props.scanRecordings()}>Aufzeichnungen scannen</button>{props.transcriptionStatus.activeJob ? <button className="button secondary" type="button" onClick={() => void props.cancelTranscription()}>Abbrechen</button> : <button className="button primary" type="button" disabled={!props.transcriptJobs.some((job) => job.status === 'pending')} onClick={() => void props.startTranscriptionQueue()}>Queue starten</button>}</div>
+    </div>
+    {props.transcriptionStatus.phase !== 'idle' && <div className="notice purple">{props.transcriptionStatus.message ?? props.transcriptionStatus.phase}{props.transcriptionStatus.progress && ` · ${props.transcriptionStatus.progress.done}/${props.transcriptionStatus.progress.total}`}</div>}
+    {props.recordings.length > 0 && <div className="panel"><div className="split-heading"><h3>Gefundene Aufzeichnungen</h3><button className="button primary" type="button" disabled={props.selectedRecordingKeys.size === 0} onClick={() => void props.enqueueRecordings()}>Auswahl einreihen</button></div><div className="recording-list">{props.recordings.map((recording) => <button type="button" key={recording.recordingKey} onClick={() => toggleRecording(recording.recordingKey)}><span className={props.selectedRecordingKeys.has(recording.recordingKey) ? 'check checked' : 'check'}>{props.selectedRecordingKeys.has(recording.recordingKey) ? '✓' : ''}</span><span><strong>{recording.title}</strong><small>{recording.sourceKind} · {recording.sectionName ?? 'Ohne Abschnitt'}</small></span></button>)}</div></div>}
+    {props.transcriptJobs.length > 0 ? <div className="job-list">{props.transcriptJobs.map((job) => <div key={job.id}><div><strong>{job.title ?? `Job ${job.id}`}</strong><span>{job.status} · {job.model ?? 'Modell ausstehend'}</span></div><div className="action-row">{job.status === 'done' && <button className="text-button" type="button" onClick={() => void window.api.openTranscript({ jobId: job.id })}>Öffnen</button>}{(job.status === 'failed_retryable' || job.status === 'failed_permanent') && <button className="text-button" type="button" onClick={() => void props.retryTranscription(job.id)}>Wiederholen</button>}</div></div>)}</div> : props.recordings.length === 0 && <EmptyState title="Noch keine Transkripte" text="Scanne ausgewählte Kurse nach Aufzeichnungen und reihe sie anschließend ein." />}
+  </>;
+}
+
+function McpConnectionDetails({ status }: { status: McpRuntimeStatus }): React.JSX.Element {
+  return <div className="connection-details">
+    <div><strong>Claude Desktop</strong><span>{status.stdioRegistered ? 'Konfiguriert' : 'Nicht konfiguriert'}</span></div>
+    <div><strong>Lokaler SSE-Endpunkt</strong><code>{status.sseUrl ?? 'Nicht aktiv'}</code></div>
+    <div><strong>Bearer-Token</strong><code>{status.token ?? 'Nicht verfügbar'}</code></div>
+    <p>Cloud-Clients erreichen 127.0.0.1 nicht direkt. Ein Tunnel darf nur bewusst eingerichtet werden; URL und Token sind dann wie Zugangsdaten zu behandeln.</p>
+  </div>;
+}
+
 function Brand(): React.JSX.Element { return <div className="brand"><span>UC</span><strong>UniCloudConnect</strong></div>; }
 function FeatureGrid({ items }: { items: string[] }): React.JSX.Element { return <div className="feature-grid">{items.map((item) => <div key={item}>{item}</div>)}</div>; }
-function OptionCard({ title, text, selected, disabled }: { title: string; text: string; selected?: boolean; disabled?: boolean }): React.JSX.Element { return <div className={`option-card${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}`}><span className="radio" /><div><strong>{title}</strong><p>{text}</p></div></div>; }
+function OptionCard({ title, text, selected, disabled, onClick }: { title: string; text: string; selected?: boolean; disabled?: boolean; onClick?: () => void }): React.JSX.Element { return <button type="button" disabled={disabled} onClick={onClick} className={`option-card${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}`}><span className="radio" /><span><strong>{title}</strong><p>{text}</p></span></button>; }
 function CourseList({ courses, toggleCourse }: { courses: Course[]; toggleCourse(course: Course): Promise<void> }): React.JSX.Element { return <div className="course-list">{courses.length ? courses.map((course) => <button type="button" key={course.courseId} onClick={() => void toggleCourse(course)}><span className={course.isSelected ? 'check checked' : 'check'}>{course.isSelected ? '✓' : ''}</span><div><strong>{course.fullname}</strong><small>{course.semester ?? course.shortname ?? `Kurs ${course.courseId}`}</small></div></button>) : <div className="empty-inline">Noch keine Kurse geladen.</div>}</div>; }
 function Metric({ label, value, suffix }: { label: string; value: string; suffix?: string }): React.JSX.Element { return <div className="metric"><small>{label}</small><strong>{value}</strong>{suffix && <span>{suffix}</span>}</div>; }
 function EmptyState({ title, text }: { title: string; text: string }): React.JSX.Element { return <div className="empty-state"><div>UC</div><h3>{title}</h3><p>{text}</p></div>; }
 
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : 'Unbekannter Fehler.'; }
-function statusLabel(status: SyncStatus['state']): string { return ({ idle: 'Bereit', syncing: 'Synchronisiert', error: 'Fehler', needs_setup: 'Einrichtung nötig' })[status]; }
+function statusLabel(status: SyncStatus['state']): string { return ({ idle: 'Bereit', syncing: 'Synchronisiert', transcribing: 'Transkribiert', error: 'Fehler', needs_setup: 'Einrichtung nötig' })[status]; }
 function dashboardTitle(tab: DashboardTab): string { return ({ overview: 'Übersicht', courses: 'Kurse & Auswahl', transcripts: 'Transkriptionen', library: 'Lokale Bibliothek', settings: 'Einstellungen' })[tab]; }
 function formatDate(value: string): string { return new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)); }
 function formatBytes(value: number | null): string { if (value === null) return 'Größe unbekannt'; if (value < 1_024) return `${value} B`; if (value < 1_048_576) return `${(value / 1_024).toFixed(1)} KB`; return `${(value / 1_048_576).toFixed(1)} MB`; }

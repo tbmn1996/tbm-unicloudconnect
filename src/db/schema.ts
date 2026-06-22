@@ -12,7 +12,7 @@
  */
 
 /** Aktuelle Schema-Version; wird in PRAGMA user_version geschrieben. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const SCHEMA_SQL = `
 -- profiles: Nutzerprofile (i. d. R. genau eines im MVP)
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS file_assets (
   downloaded_at TEXT
 );
 
--- transcript_jobs: Transkriptionsaufträge (späterer Schnitt)
+-- transcript_jobs: lokale Transkriptionsaufträge
 CREATE TABLE IF NOT EXISTS transcript_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   course_id INTEGER NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
@@ -90,8 +90,20 @@ CREATE TABLE IF NOT EXISTS transcript_jobs (
   duration_seconds INTEGER,
   error_code TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Schema-v2-Erweiterungen
+  recording_key TEXT,
+  title TEXT,
+  source_type TEXT CHECK (source_type IN ('opencast','youtube','media')),
+  media_url TEXT,
+  needs_auth INTEGER NOT NULL DEFAULT 0 CHECK (needs_auth IN (0,1)),
+  section_name TEXT,
+  section_index INTEGER,
+  recording_date TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_jobs_recording_key ON transcript_jobs(recording_key) WHERE recording_key IS NOT NULL;
 
 -- sync_runs: Synchronisationsverlauf
 CREATE TABLE IF NOT EXISTS sync_runs (

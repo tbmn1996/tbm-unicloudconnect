@@ -1,14 +1,19 @@
 /**
- * MCP-Modul (Architekturmodul, siehe Notion-PRD "TBM UniCloudConnect", Abschnitt "Architekturmodule").
+ * MCP-Modul (Architekturmodul, siehe docs/MCP_SPEC.md).
  *
- * Verantwortlich fuer: optionale lokale MCP-Einrichtung, read-only
- * LearnWeb-Zugriff fuer Claude/Codex, klare Nutzeraufklaerung. Kein
- * automatisches/stilles Aktivieren. Kein Bezug zur Sync-Auswahl -- MCP ist
- * kontoweiter Zugriff, unabhaengig davon, welche Kurse lokal synchronisiert
- * werden. Funktioniert nur, solange die App bzw. der lokale Dienst laeuft.
+ * Optionaler, lokaler, read-only LearnWeb-Zugriff fuer KI-Clients
+ * (Claude Desktop via stdio, claude.ai via SSE/HTTP). Muss explizit im
+ * Dashboard aktiviert werden; kein automatisches Starten. Kontoweiter
+ * Lesezugriff, unabhaengig von der lokalen Sync-Auswahl.
  *
- * Noch keine Implementierung -- nur Scaffold-Platzhalter. stdio-Konzept und
- * Tooling-Erfahrung liegen als read-only Referenz in
- * AgentTools/tbmn-learnweb-connector.
+ * Implementierung: Dual-Transport (stdio + SSE/HTTP), 9 read-only Tools laut
+ * MCP_SPEC, lokale SQLite read-only + LearnwebSession (Keychain). SSE nur auf
+ * 127.0.0.1 mit Bearer-Token.
  */
-export {};
+export { openReadonlyDatabase, getDbPath } from './db';
+export { makeSessionProvider, type SessionProvider } from './session';
+export { createMcpServer } from './server';
+export { registerTools, TOOL_NAMES, type ToolContext } from './tools';
+export { startStdioServer } from './server-stdio';
+export { startSseServer, type SseServerHandle, type SseServerOptions } from './server-sse';
+export { McpRuntime, type McpRuntimeOptions } from './runtime';

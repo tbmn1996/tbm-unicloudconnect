@@ -9,7 +9,7 @@
 import type { IpcRendererEvent } from 'electron';
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC, type UniCloudApi } from '../shared/ipc';
-import type { SyncStatus } from '../shared/domain';
+import type { SyncStatus, TranscriptionStatus } from '../shared/domain';
 
 const api: UniCloudApi = {
   // App / Setup
@@ -20,6 +20,7 @@ const api: UniCloudApi = {
   hasCredentials: () => ipcRenderer.invoke(IPC.hasCredentials),
   saveCredentials: (input) => ipcRenderer.invoke(IPC.saveCredentials, input),
   verifyLogin: () => ipcRenderer.invoke(IPC.verifyLogin),
+  logout: () => ipcRenderer.invoke(IPC.logout),
 
   // Bibliotheks-Ordner
   chooseLibraryFolder: () => ipcRenderer.invoke(IPC.chooseLibraryFolder),
@@ -43,14 +44,35 @@ const api: UniCloudApi = {
   getSettings: () => ipcRenderer.invoke(IPC.getSettings),
   setSetting: (input) => ipcRenderer.invoke(IPC.setSetting, input),
 
-  // MCP (Platzhalter)
+  // Transkription (Strang A)
+  getTranscriptionSettings: () => ipcRenderer.invoke(IPC.getTranscriptionSettings),
+  setTranscriptionSettings: (input) => ipcRenderer.invoke(IPC.setTranscriptionSettings, input),
+  getTranscriptionWorkerStatus: () => ipcRenderer.invoke(IPC.getTranscriptionWorkerStatus),
+  setupTranscriptionWorker: () => ipcRenderer.invoke(IPC.setupTranscriptionWorker),
+  scanRecordings: () => ipcRenderer.invoke(IPC.scanRecordings),
+  enqueueTranscriptions: (input) => ipcRenderer.invoke(IPC.enqueueTranscriptions, input),
+  getTranscriptJobs: () => ipcRenderer.invoke(IPC.getTranscriptJobs),
+  startTranscriptionQueue: () => ipcRenderer.invoke(IPC.startTranscriptionQueue),
+  cancelTranscription: () => ipcRenderer.invoke(IPC.cancelTranscription),
+  retryTranscription: (input) => ipcRenderer.invoke(IPC.retryTranscription, input),
+  openTranscript: (input) => ipcRenderer.invoke(IPC.openTranscript, input),
+
+  // MCP (Strang B)
   getMcpStatus: () => ipcRenderer.invoke(IPC.getMcpStatus),
+  getMcpRuntimeStatus: () => ipcRenderer.invoke(IPC.getMcpRuntimeStatus),
+  setMcpEnabled: (input) => ipcRenderer.invoke(IPC.setMcpEnabled, input),
+  regenerateMcpToken: () => ipcRenderer.invoke(IPC.regenerateMcpToken),
 
   // Events Main → Renderer
   onSyncStatus: (callback) => {
     const listener = (_event: IpcRendererEvent, status: SyncStatus) => callback(status);
     ipcRenderer.on(IPC.evtSyncStatus, listener);
     return () => ipcRenderer.removeListener(IPC.evtSyncStatus, listener);
+  },
+  onTranscriptionStatus: (callback) => {
+    const listener = (_event: IpcRendererEvent, status: TranscriptionStatus) => callback(status);
+    ipcRenderer.on(IPC.evtTranscriptionStatus, listener);
+    return () => ipcRenderer.removeListener(IPC.evtTranscriptionStatus, listener);
   },
 };
 
