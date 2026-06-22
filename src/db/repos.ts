@@ -475,6 +475,8 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
   const recoverInterruptedStmt = db.prepare(
     `UPDATE transcript_jobs SET status = 'pending' WHERE status IN ('claimed', 'downloading_media', 'media_downloaded', 'transcribing', 'markdown_created')`,
   );
+  const clearAllStmt = db.prepare('DELETE FROM transcript_jobs');
+  const removeStmt = db.prepare('DELETE FROM transcript_jobs WHERE id = ?');
   const getAllStmt = db.prepare('SELECT * FROM transcript_jobs ORDER BY id');
   const byIdStmt = db.prepare('SELECT * FROM transcript_jobs WHERE id = ?');
 
@@ -607,6 +609,14 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
     /** Crash-Recovery: alle unterbrochenen Jobs auf 'pending' zurücksetzen. */
     recoverInterrupted(): void {
       recoverInterruptedStmt.run();
+    },
+    /** Entfernt einen einzelnen Job anhand seiner ID. */
+    remove(id: number): void {
+      removeStmt.run(id);
+    },
+    /** Löscht alle Transkriptions-Jobs (Logout/Account-Wechsel). */
+    clear(): void {
+      clearAllStmt.run();
     },
   };
 }

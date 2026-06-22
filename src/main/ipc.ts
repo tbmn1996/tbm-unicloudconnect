@@ -87,7 +87,7 @@ export function registerIpcHandlers(runtime: AppRuntime): void {
   }));
   ipcMain.handle(IPC.setSetting, (_event, input: { key: string; value: string }) => {
     if (input?.key !== 'sync_interval_minutes') throw new Error('Unbekannte Einstellung.');
-    runtime.repos.settings.set(input.key, requireText(input.value, 'Einstellungswert'));
+    runtime.setSetting(input.key, requireText(input.value, 'Einstellungswert'));
   });
   ipcMain.handle(IPC.getMcpStatus, () => runtime.repos.mcp.get());
 
@@ -106,6 +106,8 @@ export function registerIpcHandlers(runtime: AppRuntime): void {
   ipcMain.handle(IPC.cancelTranscription, () => runtime.transcription.cancel());
   ipcMain.handle(IPC.retryTranscription, (_event, input: { jobId: number }) =>
     runtime.transcription.retry(requirePositiveInt(input?.jobId, 'Job-ID')));
+  ipcMain.handle(IPC.removeTranscription, (_event, input: { jobId: number }) =>
+    runtime.transcription.remove(requirePositiveInt(input?.jobId, 'Job-ID')));
   ipcMain.handle(IPC.openTranscript, async (_event, input: { jobId: number }) => {
     const job = runtime.repos.transcriptJobs.getById(requirePositiveInt(input?.jobId, 'Job-ID'));
     const libraryPath = runtime.getLibraryPath();

@@ -35,12 +35,12 @@ export class SyncEngine {
   }
 
   start(): void {
-    void this.run().catch(() => undefined);
+    void this.run('manual').catch(() => undefined);
   }
 
-  async run(): Promise<void> {
+  async run(trigger: 'manual' | 'startup' | 'scheduled' = 'manual'): Promise<void> {
     if (this.running) return this.running;
-    const task = this.execute();
+    const task = this.execute(trigger);
     this.running = task;
     try {
       await task;
@@ -49,12 +49,12 @@ export class SyncEngine {
     }
   }
 
-  private async execute(): Promise<void> {
+  private async execute(trigger: 'manual' | 'startup' | 'scheduled'): Promise<void> {
     const libraryPath = this.access.getLibraryPath();
     if (!libraryPath) throw new Error('Kein Bibliotheksordner konfiguriert.');
 
     const courses = this.repos.courses.getSelected();
-    const runId = this.repos.syncRuns.start('manual');
+    const runId = this.repos.syncRuns.start(trigger);
     this.setStatus({ state: 'syncing', lastRun: this.repos.syncRuns.getLast(), activeJobs: 0 });
     const counters = { activities: 0, downloaded: 0, warnings: 0, errors: 0 };
 

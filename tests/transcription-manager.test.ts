@@ -136,6 +136,59 @@ test('TranscriptionManager lässt einen abgebrochenen Job pending und claimt ihn
   }
 });
 
+test('TranscriptionManager meldet Fortschritt beim Scannen und beim Download', async () => {
+  const f = fixture();
+  try {
+    const statuses: Array<{ phase: string; progress?: { done: number; total: number }; message?: string }> = [];
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => {
+        return {
+          ...f.fakeSession,
+          downloadFileToPath: async (_url: string, destination: string, options?: { onProgress?: (downloaded: number, total?: number) => void }) => {
+            if (options?.onProgress) {
+              options.onProgress(50 * 1024 * 1024, 100 * 1024 * 1024);
+            }
+            writeFileSync(destination, Buffer.from('fake-media'));
+            return { status: 200, contentType: 'video/mp4', filename: 'lecture.mp4', sizeBytes: 10 };
+          },
+        } as unknown as LearnwebSession;
+      },
+      getLibraryPath: () => f.root,
+      workerDir: join(f.root, 'worker'),
+      onStatus: (status) => {
+        statuses.push({ phase: status.phase, progress: status.progress, message: status.message });
+      },
+      runWorker: async (request, _onProgress) => {
+        mkdirSync(dirname(request.output_path), { recursive: true });
+        writeFileSync(request.output_path, '# Transkript');
+        return { transcriptPath: request.output_path, model: 'small', durationSeconds: 10 };
+      },
+    });
+
+    const candidates = await manager.scanRecordings();
+    assert.equal(candidates.length, 1);
+
+    // Scan-Fortschritt prüfen
+    const scanStatuses = statuses.filter(s => s.phase === 'scanning');
+    assert.ok(scanStatuses.length > 0);
+    assert.deepEqual(scanStatuses[0].progress, { done: 0, total: 1 });
+    assert.match(scanStatuses[0].message, /Softwaretechnik/);
+
+    // Enqueue und verarbeiten
+    manager.enqueue([candidates[0]!.recordingKey]);
+    await manager.start();
+
+    // Download-Fortschritt prüfen
+    const downloadStatuses = statuses.filter(s => s.phase === 'downloading' && s.progress !== undefined);
+    assert.ok(downloadStatuses.length > 0);
+    assert.deepEqual(downloadStatuses[0].progress, { done: 50 * 1024 * 1024, total: 100 * 1024 * 1024 });
+    assert.match(downloadStatuses[0].message, /50.0 MB von 100.0 MB/);
+  } finally {
+    f.cleanup();
+  }
+});
+
 function response(path: string, data: string) {
   return { status: 200, url: `https://learnweb.example${path}`, headers: {}, data };
 }

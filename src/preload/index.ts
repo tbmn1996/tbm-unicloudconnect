@@ -55,6 +55,7 @@ const api: UniCloudApi = {
   startTranscriptionQueue: () => ipcRenderer.invoke(IPC.startTranscriptionQueue),
   cancelTranscription: () => ipcRenderer.invoke(IPC.cancelTranscription),
   retryTranscription: (input) => ipcRenderer.invoke(IPC.retryTranscription, input),
+  removeTranscription: (input) => ipcRenderer.invoke(IPC.removeTranscription, input),
   openTranscript: (input) => ipcRenderer.invoke(IPC.openTranscript, input),
 
   // MCP (Strang B)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   AppState,
   Course,
@@ -268,13 +268,21 @@ export function App(): React.JSX.Element {
     }
   }
 
-  async function enqueueRecordings(): Promise<void> {
+  async function enqueueRecordings(keys?: string[]): Promise<void> {
+    // Ohne explizite Keys (Bulk) wird die aktuelle Checkbox-Auswahl eingereiht.
+    const recordingKeys = keys ?? [...selectedRecordingKeys];
+    if (recordingKeys.length === 0) return;
     setBusy(true);
     setMessage(null);
     try {
-      setTranscriptJobs(await window.api.enqueueTranscriptions({
-        recordingKeys: [...selectedRecordingKeys],
-      }));
+      setTranscriptJobs(await window.api.enqueueTranscriptions({ recordingKeys }));
+      // Eingereihte Keys aus der Auswahl entfernen, damit keine Checkboxen selektiert
+      // „hängen bleiben" – gilt für Inline-„Einreihen" wie für die Bulk-Aktion.
+      setSelectedRecordingKeys((current) => {
+        const next = new Set(current);
+        for (const key of recordingKeys) next.delete(key);
+        return next;
+      });
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
@@ -295,6 +303,17 @@ export function App(): React.JSX.Element {
   async function retryTranscription(jobId: number): Promise<void> {
     await window.api.retryTranscription({ jobId });
     await startTranscriptionQueue();
+  }
+
+  async function removeTranscription(jobId: number): Promise<void> {
+    // Entfernt einen nicht-aktiven Job lokal aus der Queue (Backend lehnt aktive Jobs ab).
+    setMessage(null);
+    try {
+      await window.api.removeTranscription({ jobId });
+      setTranscriptJobs(await window.api.getTranscriptJobs());
+    } catch (error) {
+      setMessage(errorMessage(error));
+    }
   }
 
   async function setMcpEnabled(enabled: boolean): Promise<void> {
@@ -427,6 +446,7 @@ export function App(): React.JSX.Element {
       startTranscriptionQueue={startTranscriptionQueue}
       cancelTranscription={cancelTranscription}
       retryTranscription={retryTranscription}
+      removeTranscription={removeTranscription}
       mcpStatus={mcpStatus}
       setMcpEnabled={setMcpEnabled}
       regenerateMcpToken={regenerateMcpToken}
@@ -566,10 +586,11 @@ function Dashboard(props: {
   setSelectedRecordingKeys(keys: Set<string>): void;
   transcriptJobs: TranscriptJob[];
   scanRecordings(): Promise<void>;
-  enqueueRecordings(): Promise<void>;
+  enqueueRecordings(keys?: string[]): Promise<void>;
   startTranscriptionQueue(): Promise<void>;
   cancelTranscription(): Promise<void>;
   retryTranscription(jobId: number): Promise<void>;
+  removeTranscription(jobId: number): Promise<void>;
   mcpStatus: McpRuntimeStatus;
   setMcpEnabled(enabled: boolean): Promise<void>;
   regenerateMcpToken(): Promise<void>;
@@ -622,10 +643,11 @@ function TranscriptionPanel(props: {
   setSelectedRecordingKeys(keys: Set<string>): void;
   transcriptJobs: TranscriptJob[];
   scanRecordings(): Promise<void>;
-  enqueueRecordings(): Promise<void>;
+  enqueueRecordings(keys?: string[]): Promise<void>;
   startTranscriptionQueue(): Promise<void>;
   cancelTranscription(): Promise<void>;
   retryTranscription(jobId: number): Promise<void>;
+  removeTranscription(jobId: number): Promise<void>;
 }): React.JSX.Element {
   const toggleRecording = (key: string): void => {
     const next = new Set(props.selectedRecordingKeys);
@@ -633,14 +655,335 @@ function TranscriptionPanel(props: {
     else next.add(key);
     props.setSelectedRecordingKeys(next);
   };
+
+  const counts = useMemo(() => {
+    let active = 0;
+    let waiting = 0;
+    let done = 0;
+    let failed = 0;
+    for (const job of props.transcriptJobs) {
+      if (job.status === 'pending') {
+        waiting++;
+      } else if (job.status === 'done') {
+        done++;
+      } else if (job.status === 'failed_retryable' || job.status === 'failed_permanent') {
+        failed++;
+      } else if (
+        job.status === 'claimed' ||
+        job.status === 'downloading_media' ||
+        job.status === 'media_downloaded' ||
+        job.status === 'transcribing' ||
+        job.status === 'markdown_created'
+      ) {
+        active++;
+      }
+    }
+    return { active, waiting, done, failed };
+  }, [props.transcriptJobs]);
+
+  const groups = useMemo(() => {
+    const jobs = props.transcriptJobs;
+    const recordings = props.recordings;
+
+    const active: Array<{ job: TranscriptJob }> = [];
+    const waiting: Array<{ job: TranscriptJob }> = [];
+    const attention: Array<{ job: TranscriptJob }> = [];
+    const finished: Array<{ job: TranscriptJob }> = [];
+
+    for (const job of jobs) {
+      const status = job.status;
+      if (
+        status === 'claimed' ||
+        status === 'downloading_media' ||
+        status === 'media_downloaded' ||
+        status === 'transcribing' ||
+        status === 'markdown_created'
+      ) {
+        active.push({ job });
+      } else if (status === 'pending') {
+        waiting.push({ job });
+      } else if (status === 'failed_retryable' || status === 'failed_permanent') {
+        attention.push({ job });
+      } else if (status === 'done') {
+        finished.push({ job });
+      }
+    }
+
+    const available = recordings.filter(
+      (r) => !jobs.some((j) => j.recordingKey === r.recordingKey)
+    );
+
+    return { active, waiting, attention, finished, available };
+  }, [props.transcriptJobs, props.recordings]);
+
+  const formatStatusText = (status: string): string => {
+    switch (status) {
+      case 'claimed': return 'Warteschlange betreten';
+      case 'downloading_media': return 'Medien-Download läuft';
+      case 'media_downloaded': return 'Medium lokal bereitgestellt';
+      case 'transcribing': return 'Transkription läuft';
+      case 'markdown_created': return 'Markdown wird generiert';
+      case 'pending': return 'Wartet';
+      case 'done': return 'Fertig';
+      case 'failed_retryable': return 'Fehlgeschlagen (wiederholbar)';
+      case 'failed_permanent': return 'Fehlgeschlagen (permanent)';
+      default: return status;
+    }
+  };
+
+  const hasAnyItems =
+    groups.active.length > 0 ||
+    groups.waiting.length > 0 ||
+    groups.attention.length > 0 ||
+    groups.finished.length > 0 ||
+    groups.available.length > 0;
+
   return <>
-    <div className="split-heading">
-      <div><p>Worker: {props.workerStatus.installed ? `bereit (${props.workerStatus.backend ?? 'lokal'})` : 'nicht eingerichtet'}</p><small className="muted">Queue: {props.transcriptionStatus.queued} · Fertig: {props.transcriptionStatus.done} · Fehler: {props.transcriptionStatus.failed}</small></div>
-      <div className="action-row"><button className="button secondary" type="button" disabled={props.busy} onClick={() => void props.scanRecordings()}>Aufzeichnungen scannen</button>{props.transcriptionStatus.activeJob ? <button className="button secondary" type="button" onClick={() => void props.cancelTranscription()}>Abbrechen</button> : <button className="button primary" type="button" disabled={!props.transcriptJobs.some((job) => job.status === 'pending')} onClick={() => void props.startTranscriptionQueue()}>Queue starten</button>}</div>
-    </div>
-    {props.transcriptionStatus.phase !== 'idle' && <div className="notice purple">{props.transcriptionStatus.message ?? props.transcriptionStatus.phase}{props.transcriptionStatus.progress && ` · ${props.transcriptionStatus.progress.done}/${props.transcriptionStatus.progress.total}`}</div>}
-    {props.recordings.length > 0 && <div className="panel"><div className="split-heading"><h3>Gefundene Aufzeichnungen</h3><button className="button primary" type="button" disabled={props.selectedRecordingKeys.size === 0} onClick={() => void props.enqueueRecordings()}>Auswahl einreihen</button></div><div className="recording-list">{props.recordings.map((recording) => <button type="button" key={recording.recordingKey} onClick={() => toggleRecording(recording.recordingKey)}><span className={props.selectedRecordingKeys.has(recording.recordingKey) ? 'check checked' : 'check'}>{props.selectedRecordingKeys.has(recording.recordingKey) ? '✓' : ''}</span><span><strong>{recording.title}</strong><small>{recording.sourceKind} · {recording.sectionName ?? 'Ohne Abschnitt'}</small></span></button>)}</div></div>}
-    {props.transcriptJobs.length > 0 ? <div className="job-list">{props.transcriptJobs.map((job) => <div key={job.id}><div><strong>{job.title ?? `Job ${job.id}`}</strong><span>{job.status} · {job.model ?? 'Modell ausstehend'}</span></div><div className="action-row">{job.status === 'done' && <button className="text-button" type="button" onClick={() => void window.api.openTranscript({ jobId: job.id })}>Öffnen</button>}{(job.status === 'failed_retryable' || job.status === 'failed_permanent') && <button className="text-button" type="button" onClick={() => void props.retryTranscription(job.id)}>Wiederholen</button>}</div></div>)}</div> : props.recordings.length === 0 && <EmptyState title="Noch keine Transkripte" text="Scanne ausgewählte Kurse nach Aufzeichnungen und reihe sie anschließend ein." />}
+    <div className="split-heading sticky-header">
+      <div>
+        <p>Worker: {props.workerStatus.installed ? `bereit (${props.workerStatus.backend ?? 'lokal'})` : 'nicht eingerichtet'}</p>
+        <small className="muted">
+          Aktiv: {counts.active} · Wartet: {counts.waiting} · Fertig: {counts.done} · Fehler: {counts.failed}
+        </small>
+      </div>
+      <div className="action-row">
+        <button className="button secondary" type="button" disabled={props.busy} onClick={() => void props.scanRecordings()}>
+          Aufzeichnungen scannen
+        </button>
+        {props.transcriptionStatus.activeJob ? (
+          <button className="button secondary" type="button" disabled={props.busy} onClick={() => void props.cancelTranscription()}>
+            Abbrechen
+          </button>
+        ) : (
+          <button className="button primary" type="button" disabled={props.busy || counts.waiting === 0} onClick={() => void props.startTranscriptionQueue()}>
+           {props.transcriptionStatus.phase !== 'idle' && (
+      <div className="notice purple" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+          <span>{props.transcriptionStatus.message ?? props.transcriptionStatus.phase}</span>
+          {props.transcriptionStatus.progress && (
+            <span>
+              {props.transcriptionStatus.progress.done} / {props.transcriptionStatus.progress.total}
+            </span>
+          )}
+        </div>
+        {props.transcriptionStatus.progress && (
+          <div style={{ width: '100%', height: '6px', background: 'rgba(94, 92, 230, 0.15)', borderRadius: '3px', overflow: 'hidden' }}>
+            <div
+              style={{
+                height: '100%',
+                width: `${Math.min(100, Math.max(0, (props.transcriptionStatus.progress.done / props.transcriptionStatus.progress.total) * 100))}%`,
+                background: '#5e5ce6',
+                borderRadius: '3px',
+                transition: 'width .2s ease',
+              }}
+            />
+          </div>
+        )}
+      </div>
+    )}
+
+    {hasAnyItems ? (
+      <div className="transcription-unified-list">
+        {groups.active.length > 0 && (
+          <div className="group-section">
+            <h4 className="group-title">Aktiv ({groups.active.length})</h4>
+            <div className="group-items">
+              {groups.active.map(({ job }) => {
+                const isActive = props.transcriptionStatus.activeJob?.id === job.id;
+                const progress = isActive ? props.transcriptionStatus.progress : null;
+                const message = isActive
+                  ? (props.transcriptionStatus.message ?? props.transcriptionStatus.phase)
+                  : formatStatusText(job.status);
+                const percent = progress && progress.total > 0
+                  ? Math.round((progress.done / progress.total) * 100)
+                  : null;
+
+                return (
+                  <div key={job.id} className="transcription-item active-item">
+                    <div className="item-info">
+                      <span className="status-dot pulsing" />
+                      <div className="item-details">
+                        <strong>{job.title ?? `Job ${job.id}`}</strong>
+                        <small>{job.sectionName ?? 'Ohne Abschnitt'} · {message}</small>
+                      </div>
+                    </div>
+                    {percent !== null && (
+                      <div className="item-progress">
+                        <div className="progress-bar-container">
+                          <div className="progress-bar-fill" style={{ width: `${percent}%` }} />
+                        </div>
+                        <span className="progress-percent">{percent}%</span>
+                      </div>
+                    )}
+                    <div className="item-actions">
+                      <button className="text-button cancel" type="button" disabled={props.busy} onClick={() => void props.cancelTranscription()}>
+                        Abbrechen
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {groups.waiting.length > 0 && (
+          <div className="group-section">
+            <h4 className="group-title">Wartet ({groups.waiting.length})</h4>
+            <div className="group-items">
+              {groups.waiting.map(({ job }) => (
+                <div key={job.id} className="transcription-item waiting-item">
+                  <div className="item-info">
+                    <span className="status-dot waiting" />
+                    <div className="item-details">
+                      <strong>{job.title ?? `Job ${job.id}`}</strong>
+                      <small>{job.sectionName ?? 'Ohne Abschnitt'} · Wartet in Warteschlange</small>
+                    </div>
+                  </div>
+                  <div className="item-actions">
+                    <button className="text-button remove" type="button" disabled={props.busy} onClick={() => void props.removeTranscription(job.id)}>
+                      Entfernen
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {groups.attention.length > 0 && (
+          <div className="group-section">
+            <h4 className="group-title">Braucht Aufmerksamkeit ({groups.attention.length})</h4>
+            <div className="group-items">
+              {groups.attention.map(({ job }) => (
+                <div key={job.id} className="transcription-item attention-item">
+                  <div className="item-info">
+                    <span className="status-dot error" />
+                    <div className="item-details">
+                      <strong>{job.title ?? `Job ${job.id}`}</strong>
+                      <small className="error-message">
+                        {job.sectionName ?? 'Ohne Abschnitt'} · Fehler: {job.errorCode ?? 'Unbekannter Fehler'}
+                      </small>
+                    </div>
+                  </div>
+                  <div className="item-actions">
+                    <button className="text-button retry" type="button" disabled={props.busy} onClick={() => void props.retryTranscription(job.id)}>
+                      Wiederholen
+                    </button>
+                    <button className="text-button remove" type="button" disabled={props.busy} onClick={() => void props.removeTranscription(job.id)}>
+                      Entfernen
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {groups.finished.length > 0 && (
+          <div className="group-section">
+            <h4 className="group-title">Fertig ({groups.finished.length})</h4>
+            <div className="group-items">
+              {groups.finished.map(({ job }) => (
+                <div key={job.id} className="transcription-item finished-item">
+                  <div className="item-info">
+                    <span className="status-dot done" />
+                    <div className="item-details">
+                      <strong>{job.title ?? `Job ${job.id}`}</strong>
+                      <small>{job.sectionName ?? 'Ohne Abschnitt'} · Abgeschlossen · {job.model ?? 'Modell unbekannt'}</small>
+                    </div>
+                  </div>
+                  <div className="item-actions">
+                    <button className="text-button open" type="button" onClick={() => void window.api.openTranscript({ jobId: job.id })}>
+                      Öffnen
+                    </button>
+                    <button className="text-button remove" type="button" disabled={props.busy} onClick={() => void props.removeTranscription(job.id)}>
+                      Entfernen
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {groups.available.length > 0 && (
+          <div className="group-section">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h4 className="group-title" style={{ margin: 0 }}>Verfügbar ({groups.available.length})</h4>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  className="text-button"
+                  style={{ fontSize: '12px' }}
+                  type="button"
+                  onClick={() => props.setSelectedRecordingKeys(new Set(groups.available.map((r) => r.recordingKey)))}
+                >
+                  Alle auswählen
+                </button>
+                <span style={{ color: '#d2d2d6', fontSize: '12px' }}>|</span>
+                <button
+                  className="text-button"
+                  style={{ fontSize: '12px' }}
+                  type="button"
+                  onClick={() => props.setSelectedRecordingKeys(new Set())}
+                >
+                  Auswahl aufheben
+                </button>
+              </div>
+            </div>
+
+            {props.selectedRecordingKeys.size > 0 && (
+              <div className="selection-bar">
+                <span>{props.selectedRecordingKeys.size} Aufzeichnungen ausgewählt</span>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button className="button primary small" type="button" disabled={props.busy} onClick={() => void props.enqueueRecordings()}>
+                    Auswahl einreihen
+                  </button>
+                  <button className="button secondary small" type="button" onClick={() => props.setSelectedRecordingKeys(new Set())}>
+                    Auswahl aufheben
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="group-items available-list">
+              {groups.available.map((recording) => (
+                <div
+                  key={recording.recordingKey}
+                  className="transcription-item available-item clickable"
+                  onClick={() => toggleRecording(recording.recordingKey)}
+                >
+                  <span className={props.selectedRecordingKeys.has(recording.recordingKey) ? 'check checked' : 'check'}>
+                    {props.selectedRecordingKeys.has(recording.recordingKey) ? '✓' : ''}
+                  </span>
+                  <div className="item-info">
+                    <div className="item-details">
+                      <strong>{recording.title}</strong>
+                      <small>{recording.sourceKind} · {recording.sectionName ?? 'Ohne Abschnitt'}</small>
+                    </div>
+                  </div>
+                  <div className="item-actions" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      className="text-button enqueue"
+                      type="button"
+                      disabled={props.busy}
+                      onClick={() => void props.enqueueRecordings([recording.recordingKey])}
+                    >
+                      Einreihen
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    ) : (
+      <EmptyState
+        title="Noch keine Transkripte"
+        text="Scanne ausgewählte Kurse nach Aufzeichnungen und reihe sie anschließend ein."
+      />
+    )}
   </>;
 }
 

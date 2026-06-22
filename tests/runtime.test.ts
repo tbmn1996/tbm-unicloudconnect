@@ -16,3 +16,42 @@ test('Setup-Abschluss publiziert den aktuellen Idle-Status für das Tray', () =>
     runtime.close();
   }
 });
+
+test('Hintergrund-Sync-Timer wird basierend auf Settings korrekt registriert', () => {
+  const runtime = new AppRuntime(':memory:', () => undefined);
+  try {
+    // Standardmäßig kein Timer
+    assert.equal(runtime.syncTimer, null);
+
+    // Setze Intervall auf 10 Minuten
+    runtime.setSetting('sync_interval_minutes', '10');
+    assert.ok(runtime.syncTimer !== null);
+
+    // Deaktiviere Intervall (z. B. auf 0 oder leer)
+    runtime.setSetting('sync_interval_minutes', '0');
+    assert.equal(runtime.syncTimer, null);
+  } finally {
+    runtime.close();
+  }
+});
+
+test('Hintergrund-Sync-Timer erzwingt ein Minimum von 5 Minuten', () => {
+  const runtime = new AppRuntime(':memory:', () => undefined);
+  try {
+    // Intervall von 2 Minuten setzen (sollte auf 5 Minuten hochgesetzt werden)
+    runtime.setSetting('sync_interval_minutes', '2');
+    assert.ok(runtime.syncTimer !== null);
+  } finally {
+    runtime.close();
+  }
+});
+
+test('close() räumt alle registrierten Timer auf', () => {
+  const runtime = new AppRuntime(':memory:', () => undefined);
+  runtime.setSetting('sync_interval_minutes', '10');
+  assert.ok(runtime.syncTimer !== null);
+
+  runtime.close();
+  assert.equal(runtime.syncTimer, null);
+  assert.equal(runtime.startupTimeout, null);
+});

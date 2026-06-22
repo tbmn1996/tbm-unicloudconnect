@@ -66,6 +66,7 @@ export const IPC = {
   startTranscriptionQueue: 'transcription:startQueue',
   cancelTranscription: 'transcription:cancel',
   retryTranscription: 'transcription:retry',
+  removeTranscription: 'transcription:remove',
   openTranscript: 'transcription:openTranscript',
   // MCP (Strang B) — optional, lokal, opt-in
   getMcpStatus: 'mcp:getStatus',
@@ -134,6 +135,8 @@ export interface UniCloudApi {
   cancelTranscription(): Promise<void>;
   /** Wiederholt einen fehlgeschlagenen Job. */
   retryTranscription(input: { jobId: number }): Promise<void>;
+  /** Entfernt einen nicht-aktiven Job aus der Queue. */
+  removeTranscription(input: { jobId: number }): Promise<void>;
   /** Öffnet das fertige Markdown-Transkript im Finder/Editor. */
   openTranscript(input: { jobId: number }): Promise<void>;
 

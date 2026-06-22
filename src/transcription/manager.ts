@@ -114,22 +114,37 @@ export class TranscriptionManager {
 
   async scanRecordings(): Promise<RecordingCandidate[]> {
     this.phase = 'scanning';
-    this.message = 'Ausgewählte Kurse werden nach Aufzeichnungen durchsucht.';
+    const courses = this.options.repos.courses.getSelected();
+    const total = courses.length;
+    if (total > 0) {
+      this.progress = { done: 0, total };
+      this.message = `Ausgewählte Kurse werden nach Aufzeichnungen durchsucht: "${courses[0].fullname}" (1/${total})`;
+    } else {
+      this.message = 'Ausgewählte Kurse werden nach Aufzeichnungen durchsucht.';
+    }
     this.publish();
     try {
       const client = new LearnwebClient(await this.options.getSession());
       const candidates: RecordingCandidate[] = [];
       const failedCourseIds: number[] = [];
-      for (const course of this.options.repos.courses.getSelected()) {
+      let done = 0;
+      for (const course of courses) {
         try {
+          this.progress = { done, total };
+          this.message = `Ausgewählte Kurse werden nach Aufzeichnungen durchsucht: "${course.fullname}" (${done + 1}/${total})`;
+          this.publish();
           const activities = await client.listActivities(course.courseId);
           this.options.repos.activities.upsertMany(activities);
           candidates.push(...await client.scanRecordings(activities));
         } catch (error) {
           failedCourseIds.push(course.courseId);
           console.error(`[transcription] Aufzeichnungs-Scan für Kurs ${course.courseId} fehlgeschlagen:`, error);
+        } finally {
+          done++;
         }
       }
+      this.progress = { done, total };
+      this.publish();
       this.candidates.clear();
       for (const candidate of candidates) this.candidates.set(candidate.recordingKey, candidate);
       this.phase = 'idle';
@@ -139,6 +154,7 @@ export class TranscriptionManager {
       return [...this.candidates.values()];
     } finally {
       if (this.phase === 'scanning') this.phase = 'idle';
+      this.progress = undefined;
       this.publish();
     }
   }
@@ -224,6 +240,22 @@ export class TranscriptionManager {
     this.publish();
   }
 
+  /** Entfernt einen nicht-aktiven Job dauerhaft aus der Queue. */
+  remove(jobId: number): void {
+    const job = this.options.repos.transcriptJobs.getById(jobId);
+    if (!job) throw new Error('Job nicht gefunden.');
+    const inProgress = job.status === 'claimed'
+      || job.status === 'downloading_media'
+      || job.status === 'media_downloaded'
+      || job.status === 'transcribing'
+      || job.status === 'markdown_created';
+    if (jobId === this.activeJob?.id || inProgress) {
+      throw new Error('Aktive Jobs können nicht entfernt werden.');
+    }
+    this.options.repos.transcriptJobs.remove(jobId);
+    this.publish();
+  }
+
   private async processJob(job: TranscriptJob): Promise<void> {
     this.activeJob = job;
     this.activeAbort = new AbortController();
@@ -250,7 +282,29 @@ export class TranscriptionManager {
         const session = await this.options.getSession();
         const mediaUrl = await resolveMediaUrl(session, job.mediaUrl ?? job.sourceUrl);
         mediaPath = join(tempDir, 'media.bin');
-        await session.downloadFileToPath(mediaUrl, mediaPath, { maxBytes: MAX_MEDIA_BYTES });
+        let lastPublishTime = 0;
+        await session.downloadFileToPath(mediaUrl, mediaPath, {
+          maxBytes: MAX_MEDIA_BYTES,
+          onProgress: (downloaded, total) => {
+            const now = Date.now();
+            const shouldPublish = now - lastPublishTime > 150 || downloaded === total;
+            if (shouldPublish) {
+              lastPublishTime = now;
+              if (total) {
+                this.progress = { done: downloaded, total };
+                const pct = Math.round((downloaded / total) * 100);
+                const mbDownloaded = (downloaded / (1024 * 1024)).toFixed(1);
+                const mbTotal = (total / (1024 * 1024)).toFixed(1);
+                this.message = `Geschütztes Medium wird lokal bereitgestellt: ${mbDownloaded} MB von ${mbTotal} MB (${pct}%)`;
+              } else {
+                this.progress = undefined;
+                const mbDownloaded = (downloaded / (1024 * 1024)).toFixed(1);
+                this.message = `Geschütztes Medium wird lokal bereitgestellt: ${mbDownloaded} MB heruntergeladen`;
+              }
+              this.publish();
+            }
+          },
+        });
         this.options.repos.transcriptJobs.setStatus(job.id, 'media_downloaded', { mediaLocalPath: mediaPath });
       }
       if (this.activeAbort.signal.aborted) throw new WorkerError('CANCELLED');

@@ -187,7 +187,11 @@ export class LearnwebSession {
   async downloadFileToPath(
     url: string,
     destination: string,
-    options: { maxBytes?: number; timeoutMs?: number } = {},
+    options: {
+      maxBytes?: number;
+      timeoutMs?: number;
+      onProgress?: (downloadedBytes: number, totalBytes?: number) => void;
+    } = {},
   ): Promise<DownloadToPathResult> {
     const maxBytes = options.maxBytes ?? 2 * 1024 * 1024 * 1024;
     const timeoutMs = options.timeoutMs ?? 30 * 60_000;
@@ -208,11 +212,18 @@ export class LearnwebSession {
       }
 
       let sizeBytes = 0;
+      const totalBytes = response.contentLength;
       const limiter = new Transform({
         transform(chunk: Buffer, _encoding, callback) {
           sizeBytes += chunk.length;
-          if (sizeBytes > maxBytes) callback(new LearnwebFileTooLargeError());
-          else callback(null, chunk);
+          if (sizeBytes > maxBytes) {
+            callback(new LearnwebFileTooLargeError());
+          } else {
+            if (options.onProgress) {
+              options.onProgress(sizeBytes, totalBytes);
+            }
+            callback(null, chunk);
+          }
         },
       });
       try {
@@ -292,6 +303,7 @@ export class LearnwebSession {
     status: number;
     contentType: string;
     filename?: string;
+    contentLength?: number;
     stream: Readable;
   }> {
     try {
@@ -302,10 +314,13 @@ export class LearnwebSession {
         validateStatus: () => true,
       });
       const headers = normalizeHeaders(response.headers);
+      const contentLengthStr = headers['content-length'];
+      const contentLength = contentLengthStr ? parseInt(contentLengthStr, 10) : undefined;
       return {
         status: response.status,
         contentType: headers['content-type'] ?? 'application/octet-stream',
         filename: extractFilenameFromContentDisposition(headers['content-disposition']),
+        contentLength: contentLength !== undefined && !isNaN(contentLength) ? contentLength : undefined,
         stream: response.data,
       };
     } catch (error) {

@@ -29,6 +29,8 @@ export class AppRuntime {
   private session: LearnwebSession | null = null;
   private sessionAccount: string | null = null;
   private autoTranscriptionRunning = false;
+  syncTimer: NodeJS.Timeout | null = null;
+  startupTimeout: NodeJS.Timeout | null = null;
 
   constructor(
     dbPath: string,
@@ -61,6 +63,13 @@ export class AppRuntime {
       console.error('[mcp] Automatischer MCP-Restore beim App-Start fehlgeschlagen:', error);
       this.repos.mcp.set(false);
     });
+
+    this.setupSyncTimer();
+    if (this.repos.settings.get('setup_complete') === '1' && this.repos.credentials.get() !== null) {
+      this.startupTimeout = setTimeout(() => {
+        void this.sync.run('startup').catch(() => undefined);
+      }, 5000);
+    }
   }
 
   getLibraryPath(): string | null {
@@ -85,6 +94,7 @@ export class AppRuntime {
     if (profile) this.repos.profiles.setDisplayName(profile.id, displayName);
     else this.repos.profiles.create(displayName, this.getLibraryPath());
     this.repos.settings.set('setup_complete', '1');
+    this.setupSyncTimer();
     this.sync.notifyCurrentStatus();
     return this.getAppState();
   }
@@ -158,7 +168,45 @@ export class AppRuntime {
     }
   }
 
+  setupSyncTimer(): void {
+    if (this.syncTimer) {
+      clearInterval(this.syncTimer);
+      this.syncTimer = null;
+    }
+
+    const intervalVal = this.repos.settings.get('sync_interval_minutes');
+    if (!intervalVal) return;
+
+    const intervalMinutes = parseInt(intervalVal, 10);
+    if (isNaN(intervalMinutes) || intervalMinutes <= 0) return;
+
+    // Enforce a minimum interval of 5 minutes to avoid overloading the server.
+    const safeIntervalMinutes = Math.max(5, intervalMinutes);
+    const ms = safeIntervalMinutes * 60 * 1000;
+
+    this.syncTimer = setInterval(() => {
+      if (this.repos.settings.get('setup_complete') === '1' && this.repos.credentials.get() !== null) {
+        void this.sync.run('scheduled').catch(() => undefined);
+      }
+    }, ms);
+  }
+
+  setSetting(key: string, value: string): void {
+    this.repos.settings.set(key, value);
+    if (key === 'sync_interval_minutes') {
+      this.setupSyncTimer();
+    }
+  }
+
   close(): void {
+    if (this.syncTimer) {
+      clearInterval(this.syncTimer);
+      this.syncTimer = null;
+    }
+    if (this.startupTimeout) {
+      clearTimeout(this.startupTimeout);
+      this.startupTimeout = null;
+    }
     void this.mcp.close();
     this.db.close();
   }
