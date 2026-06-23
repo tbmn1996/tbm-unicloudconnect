@@ -539,8 +539,8 @@ function SetupStep(props: SetupStepProps): React.JSX.Element {
       {props.step === 2 && <>
         <p>Deine Zugangsdaten werden ausschließlich im macOS-Schlüsselbund gespeichert und direkt gegen das Uni-Münster-LearnWeb geprüft.</p>
         <div className="form-grid">
-          <label>Benutzername<input autoComplete="username" value={props.username} onChange={(event) => props.setUsername(event.target.value)} /></label>
-          <label>Passwort<input autoComplete="current-password" type="password" value={props.password} onChange={(event) => props.setPassword(event.target.value)} /></label>
+          <label>Benutzername<input autoComplete="username" value={props.username} onChange={(event) => props.setUsername(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !props.busy && props.username && props.password) { void props.saveLogin(); } }} /></label>
+          <label>Passwort<input autoComplete="current-password" type="password" value={props.password} onChange={(event) => props.setPassword(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !props.busy && props.username && props.password) { void props.saveLogin(); } }} /></label>
         </div>
         <button className="button primary" type="button" disabled={props.busy || !props.username || !props.password} onClick={() => void props.saveLogin()}>{props.busy ? 'Prüfe …' : 'Login prüfen und sicher speichern'}</button>
         {props.loginVerified && <div className="notice success">Login erfolgreich geprüft. Zugangsdaten liegen im Schlüsselbund.</div>}
