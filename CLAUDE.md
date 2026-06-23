@@ -23,6 +23,10 @@ macOS-Keychain, LearnWeb-Core, Sync-Engine, Local-Library, lokale Transkription 
   - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (App-Modell, Modulzuständigkeiten und SQLite-Schema)
   - [docs/SETUP_FLOW.md](docs/SETUP_FLOW.md) (8 Schritte des Setup-Wizards)
   - [docs/MCP_SPEC.md](docs/MCP_SPEC.md) (Spezifikation der 9 read-only MCP-Tools)
+- **Hintergrund- und Planungsdokumente** (nicht bindend, aber vor Arbeit an verwandten Themen lesen):
+  - [docs/MVP1_GAP_REPORT.md](docs/MVP1_GAP_REPORT.md) (Audit: MVP1-Soll/Ist-Abgleich gegen die Referenzspezifikationen, offene Lücken priorisiert)
+  - [docs/FUTURE_OUTPUT_ADAPTERS.md](docs/FUTURE_OUTPUT_ADAPTERS.md) (Post-MVP1-Sondierung: Output-Adapter wie Notion/Obsidian — explizit kein Code in MVP 1)
+  - [docs/adr/0001-macos-local-first-no-notion.md](docs/adr/0001-macos-local-first-no-notion.md) (ADR: Begründung für macOS-only, local-first und Notion-Ausschluss in MVP 1)
 
 ## Stack
 
