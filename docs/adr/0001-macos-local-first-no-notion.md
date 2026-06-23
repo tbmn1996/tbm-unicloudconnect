@@ -1,6 +1,6 @@
 # ADR 0001: macOS-only, Local-first und Notion-Ausschluss für MVP 1
 
-* **Status**: Akzeptiert (Accepted)
+* **Status**: Akzeptiert (Accepted) — **Punkt 2 (Notion-Ausschluss) abgelöst durch [ADR 0002](0002-notion-output-adapter-mvp2.md), 2026-06-23**
 * **Datum**: 2026-06-21
 * **Beteiligte**: Thomas Niermann (User), Coding Assistant (Agent)
 

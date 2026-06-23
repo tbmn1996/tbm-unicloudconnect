@@ -4,7 +4,7 @@
 
 **TBM UniCloudConnect** ist ein local-first Synchronisations-Werkzeug für macOS. Die Anwendung lädt ausgewählte Vorlesungs- und Studienmaterialien von der universitären Lernplattform (Münster LearnWeb) automatisch herunter, ordnet sie lokal in einer verständlichen Verzeichnisstruktur und transkribiert auf Wunsch Audio- und Videoaufzeichnungen in strukturierte Markdown-Dateien.
 
-MVP 1 ist bewusst komplett unabhängig von Notion konzipiert und läuft als Hintergrunddienst über ein macOS-Statusbar-Icon, kombiniert mit einem vollwertigen Dashboard.
+MVP 1 lief bewusst komplett unabhängig von Notion und als Hintergrunddienst über ein macOS-Statusbar-Icon, kombiniert mit einem vollwertigen Dashboard. Ab der nächsten Ausbaustufe kommt ein optionaler Notion-Output-Adapter hinzu (siehe [ADR 0002](adr/0002-notion-output-adapter-mvp2.md) und `docs/FUTURE_OUTPUT_ADAPTERS.md`); der lokale, offline-fähige Betrieb bleibt dabei der Standard.
 
 ---
 

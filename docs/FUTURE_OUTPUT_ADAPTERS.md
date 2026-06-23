@@ -1,7 +1,7 @@
 # Sondierung: Output-Adapter für Note-Taking-Apps
 
-> **Status**: Sondierung / Pre-Planning  
-> **Scope**: Post-MVP 1 — Kein Code in MVP 1, nur Designgrundlage.  
+> **Status**: Aktive Design-Grundlage für die Umsetzung (siehe [ADR 0002](adr/0002-notion-output-adapter-mvp2.md))  
+> **Scope**: Der Notion-Ausschluss aus ADR 0001 wurde am 2026-06-23 aufgehoben. Dieses Dokument bildet die Architektur-Basis für GitHub Issue #23. Abschnitt 5.2 ("Was NICHT in MVP 1 geändert werden soll") gilt nicht mehr uneingeschränkt — vor Implementierungsbeginn neu bewerten.  
 > **Referenz**: [learnweb_sync](https://github.com/tbmn1996/learnweb_sync) als Vorgängerprojekt mit Notion-Push.
 
 ---

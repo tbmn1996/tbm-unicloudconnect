@@ -1,6 +1,8 @@
 # Scope: TBM UniCloudConnect MVP 1
 
-Dieses Dokument definiert die harten Grenzen für die erste Ausbaustufe (MVP 1) der Anwendung. Dies soll verhindern, dass in zukünftigen Sessions unerwartet Cloud-Komponenten, Cross-Platform-Bibliotheken oder Notion-Anbindungen hinzugefügt werden.
+Dieses Dokument definiert die harten Grenzen für die erste Ausbaustufe (MVP 1) der Anwendung. Dies soll verhindern, dass in zukünftigen Sessions unerwartet Cloud-Komponenten oder Cross-Platform-Bibliotheken hinzugefügt werden.
+
+> **Hinweis (2026-06-23):** Der ursprüngliche Notion-Ausschluss wurde durch [ADR 0002](adr/0002-notion-output-adapter-mvp2.md) aufgehoben. Notion ist als optionaler Output-Adapter geplant (siehe `docs/FUTURE_OUTPUT_ADAPTERS.md`). Alle übrigen Zeilen dieser Tabelle bleiben unverändert gültig.
 
 ---
 
@@ -12,7 +14,7 @@ Dieses Dokument definiert die harten Grenzen für die erste Ausbaustufe (MVP 1) 
 | **Architektur** | Local-first, Offline-first, Standalone | Cloud-Backup, Multi-User-Datenbanken |
 | **Credentials** | macOS Keychain (Schlüsselbund) | `.env`-Klartextdateien, Cloud-Vaults |
 | **Persistenz** | Lokale SQLite-Datenbank | PostgreSQL, Firebase, Notion-DBs |
-| **Notion** | **Keine Notion-Integration** | Notion-Seiten, Notion-Tabellen, Uploads |
+| **Notion** | Optionaler Output-Adapter (geplant, siehe [ADR 0002](adr/0002-notion-output-adapter-mvp2.md)) | Notion als verpflichtender Kernbestandteil der Sync-Engine |
 | **Plattform** | Münster LearnWeb (feste URL intern) | Frei konfigurierbare LearnWeb-Instanzen |
 | **Bedienung** | Grafischer Setup-Wizard & Dashboard | Reine CLI, manuelle `.env`-Konfiguration |
 | **Hintergrund** | Statusbar-Menü zur schnellen Übersicht | Unsichtbare Dämonen ohne UI-Indikator |

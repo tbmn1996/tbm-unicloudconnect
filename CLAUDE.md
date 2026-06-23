@@ -11,7 +11,7 @@ macOS-Keychain, LearnWeb-Core, Sync-Engine, Local-Library, lokale Transkription 
 
 - **Plattform**: MVP 1 ist strikt macOS-only. Keine Windows- oder Linux-Kompatibilität implementieren.
 - **Speicherung (Local-first)**: Alle Daten und die Synchronisation laufen komplett local-first auf dem Rechner des Nutzers. Keine Cloud-Speicherung oder zentrale Server.
-- **Keine Notion-Integration**: Es gibt in MVP 1 keine Notion-Push-Pfade, Notion-Datenbanken oder Notion-File-Uploads. Keine Google-Drive-, Notion- oder Lovable-Cloud-Flows als MVP-Kern.
+- **Notion-Integration (ab MVP 2 geplant)**: Der ursprüngliche MVP-1-Ausschluss wurde durch [ADR 0002](docs/adr/0002-notion-output-adapter-mvp2.md) aufgehoben (Bezug: GitHub Issue #23). Notion wird als optionaler Output-Adapter umgesetzt, local-first bleibt Default. Solange kein konkreter Implementierungsauftrag für die Sub-Issues vorliegt, keine Notion-Dependencies ungefragt hinzufügen. Google-Drive- oder Lovable-Cloud-Flows bleiben weiterhin kein MVP-Kern.
 - **LearnWeb-Zugriff**: Der Zugriff auf das LearnWeb ist strikt read-only. Es wird nichts zurückgeschrieben.
 - **Credentials**: Passwörter und Zugangsdaten werden ausschließlich in der macOS Keychain (Schlüsselbund) gesichert. Keine Klartext-Credentials in `.env`, der SQLite-DB oder Logs.
 - **Zustand (State)**: Der Anwendungszustand wird in einer lokalen SQLite-Datenbank verwaltet.
@@ -23,10 +23,11 @@ macOS-Keychain, LearnWeb-Core, Sync-Engine, Local-Library, lokale Transkription 
   - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (App-Modell, Modulzuständigkeiten und SQLite-Schema)
   - [docs/SETUP_FLOW.md](docs/SETUP_FLOW.md) (8 Schritte des Setup-Wizards)
   - [docs/MCP_SPEC.md](docs/MCP_SPEC.md) (Spezifikation der 9 read-only MCP-Tools)
+  - [docs/FUTURE_OUTPUT_ADAPTERS.md](docs/FUTURE_OUTPUT_ADAPTERS.md) (Design-Grundlage für den Notion-Output-Adapter, siehe ADR 0002 — vor Arbeit an Issue #23 lesen)
 - **Hintergrund- und Planungsdokumente** (nicht bindend, aber vor Arbeit an verwandten Themen lesen):
   - [docs/MVP1_GAP_REPORT.md](docs/MVP1_GAP_REPORT.md) (Audit: MVP1-Soll/Ist-Abgleich gegen die Referenzspezifikationen, offene Lücken priorisiert)
-  - [docs/FUTURE_OUTPUT_ADAPTERS.md](docs/FUTURE_OUTPUT_ADAPTERS.md) (Post-MVP1-Sondierung: Output-Adapter wie Notion/Obsidian — explizit kein Code in MVP 1)
-  - [docs/adr/0001-macos-local-first-no-notion.md](docs/adr/0001-macos-local-first-no-notion.md) (ADR: Begründung für macOS-only, local-first und Notion-Ausschluss in MVP 1)
+  - [docs/adr/0001-macos-local-first-no-notion.md](docs/adr/0001-macos-local-first-no-notion.md) (ADR: Begründung für macOS-only, local-first und — bis ADR 0002 — Notion-Ausschluss in MVP 1)
+  - [docs/adr/0002-notion-output-adapter-mvp2.md](docs/adr/0002-notion-output-adapter-mvp2.md) (ADR: Aufhebung des Notion-Ausschlusses, Notion-Output-Adapter als nächster Schritt)
 
 ## Stack
 
