@@ -16,6 +16,7 @@ let courses: Course[] = [
   course(103, 'Datenbanken', 'WiSe 2025/26'),
 ];
 let syncStatus: SyncStatus = { state: 'idle', lastRun: null, activeJobs: 0 };
+let mockSyncInterval: number | null = null;
 const listeners = new Set<(status: SyncStatus) => void>();
 const transcriptionListeners = new Set<(status: TranscriptionStatus) => void>();
 
@@ -56,8 +57,10 @@ export function createDevApi(): UniCloudApi {
       for (const listener of listeners) listener(syncStatus);
     },
     getSyncStatus: async () => syncStatus,
-    getSettings: async () => ({ syncIntervalMinutes: null, defaultLibraryPath: state.libraryPath }),
-    setSetting: async () => undefined,
+    getSettings: async () => ({ syncIntervalMinutes: mockSyncInterval, defaultLibraryPath: state.libraryPath }),
+    setSetting: async ({ key, value }) => {
+      if (key === 'sync_interval_minutes') mockSyncInterval = parseInt(value, 10);
+    },
     getMcpStatus: async () => ({ id: 1, enabled: false, configuredAt: null, lastCheckedAt: null }),
 
     // Transkription (Vorschau-Mocks)

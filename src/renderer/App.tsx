@@ -27,6 +27,14 @@ const STEPS = [
 type DashboardTab = 'overview' | 'courses' | 'transcripts' | 'library' | 'settings';
 type TestState = 'idle' | 'running' | 'success' | 'error';
 
+const SYNC_INTERVAL_OPTIONS: Array<{ minutes: number; label: string }> = [
+  { minutes: 15, label: 'Alle 15 Minuten' },
+  { minutes: 30, label: 'Alle 30 Minuten' },
+  { minutes: 60, label: 'Stündlich' },
+  { minutes: 240, label: 'Alle 4 Stunden' },
+  { minutes: 1440, label: 'Täglich' },
+];
+
 const EMPTY_SYNC: SyncStatus = { state: 'idle', lastRun: null, activeJobs: 0 };
 const EMPTY_TRANSCRIPTION: TranscriptionStatus = {
   phase: 'idle', activeJob: null, queued: 0, done: 0, failed: 0,
@@ -52,6 +60,8 @@ export function App(): React.JSX.Element {
   const [courses, setCourses] = useState<Course[]>([]);
   const [files, setFiles] = useState<FileAsset[]>([]);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(EMPTY_SYNC);
+  const [syncIntervalMinutes, setSyncIntervalMinutes] = useState<number | null>(null);
+  const [editingSyncMode, setEditingSyncMode] = useState(false);
   const [transcriptionSettings, setTranscriptionSettings] = useState(DEFAULT_TRANSCRIPTION_SETTINGS);
   const [workerStatus, setWorkerStatus] = useState<TranscriptionWorkerStatus>({
     installed: false, backend: null, downloadedModels: [],
@@ -83,11 +93,12 @@ export function App(): React.JSX.Element {
       window.api.getCourses(),
       window.api.getLibraryItems(),
       window.api.getSyncStatus(),
+      window.api.getSettings(),
       window.api.getTranscriptionSettings(),
       window.api.getTranscriptionWorkerStatus(),
       window.api.getTranscriptJobs(),
       window.api.getMcpRuntimeStatus(),
-    ]).then(([state, storedCourses, libraryItems, status, transcription, worker, jobs, mcp]) => {
+    ]).then(([state, storedCourses, libraryItems, status, settings, transcription, worker, jobs, mcp]) => {
       if (!active) return;
       setAppState(state);
       setDisplayName(state.profile?.displayName ?? 'Thomas');
@@ -96,6 +107,7 @@ export function App(): React.JSX.Element {
       setCourses(storedCourses);
       setFiles(libraryItems);
       setSyncStatus(status);
+      setSyncIntervalMinutes(settings.syncIntervalMinutes);
       setTranscriptionSettings(transcription);
       setWorkerStatus(worker);
       setTranscriptJobs(jobs);
@@ -235,6 +247,19 @@ export function App(): React.JSX.Element {
     setMessage(null);
     try {
       setTranscriptionSettings(await window.api.setTranscriptionSettings(settings));
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveSyncInterval(minutes: number): Promise<void> {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await window.api.setSetting({ key: 'sync_interval_minutes', value: String(minutes) });
+      setSyncIntervalMinutes(minutes);
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
@@ -403,6 +428,8 @@ export function App(): React.JSX.Element {
               setupWorker={setupWorker}
               mcpStatus={mcpStatus}
               setMcpEnabled={setMcpEnabled}
+              syncIntervalMinutes={syncIntervalMinutes}
+              saveSyncInterval={saveSyncInterval}
             />
             {message && <div className="notice error" role="alert">{message}</div>}
           </div>
@@ -451,6 +478,10 @@ export function App(): React.JSX.Element {
       setMcpEnabled={setMcpEnabled}
       regenerateMcpToken={regenerateMcpToken}
       handleLogout={handleLogout}
+      syncIntervalMinutes={syncIntervalMinutes}
+      saveSyncInterval={saveSyncInterval}
+      editingSyncMode={editingSyncMode}
+      setEditingSyncMode={setEditingSyncMode}
     />
   );
 }
@@ -481,6 +512,8 @@ interface SetupStepProps {
   setupWorker(): Promise<void>;
   mcpStatus: McpRuntimeStatus;
   setMcpEnabled(enabled: boolean): Promise<void>;
+  syncIntervalMinutes: number | null;
+  saveSyncInterval(minutes: number): Promise<void>;
 }
 
 function SetupStep(props: SetupStepProps): React.JSX.Element {
@@ -555,9 +588,31 @@ function SetupStep(props: SetupStepProps): React.JSX.Element {
         {props.testState === 'error' && <div className="notice error">Der Testlauf ist noch nicht vollständig erfolgreich.</div>}
       </>}
       {props.step === 7 && <>
-        <p>Der manuelle Sync ist in diesem Vertikalschnitt aktiv. Scheduler und Login-Start folgen separat.</p>
-        <OptionCard title="Nur manuell" text="Du startest jeden Sync im Dashboard selbst." selected />
-        <OptionCard title="Automatischer Hintergrundsync" text="Noch nicht verfügbar." disabled />
+        <p>Login-Start beim Systemstart folgt separat.</p>
+        <OptionCard
+          title="Nur manuell"
+          text="Du startest jeden Sync im Dashboard selbst."
+          selected={!props.syncIntervalMinutes}
+          onClick={() => void props.saveSyncInterval(0)}
+        />
+        <OptionCard
+          title="Automatischer Hintergrundsync"
+          text="Die App synchronisiert in einem festen Intervall im Hintergrund."
+          selected={!!props.syncIntervalMinutes}
+          onClick={() => void props.saveSyncInterval(30)}
+        />
+        {!!props.syncIntervalMinutes && (
+          <label>Intervall
+            <select
+              value={props.syncIntervalMinutes}
+              onChange={(event) => void props.saveSyncInterval(Number(event.target.value))}
+            >
+              {SYNC_INTERVAL_OPTIONS.map((option) => (
+                <option key={option.minutes} value={option.minutes}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <button className="button primary wide" type="button" disabled={props.busy} onClick={() => void props.finishSetup()}>Einrichtung abschließen & Dashboard öffnen</button>
       </>}
     </div>
@@ -595,6 +650,10 @@ function Dashboard(props: {
   setMcpEnabled(enabled: boolean): Promise<void>;
   regenerateMcpToken(): Promise<void>;
   handleLogout(): Promise<void>;
+  syncIntervalMinutes: number | null;
+  saveSyncInterval(minutes: number): Promise<void>;
+  editingSyncMode: boolean;
+  setEditingSyncMode(value: boolean): void;
 }): React.JSX.Element {
   const selected = props.courses.filter((course) => course.isSelected).length;
   return <div className="dashboard-shell">
@@ -628,7 +687,7 @@ function Dashboard(props: {
         {props.tab === 'courses' && <><div className="split-heading"><p>{selected} Kurse werden synchronisiert.</p><button className="button secondary" type="button" disabled={props.busy} onClick={() => void props.refreshCourses()}>Aktualisieren</button></div><CourseList courses={props.courses} toggleCourse={props.toggleCourse} /></>}
         {props.tab === 'transcripts' && <TranscriptionPanel {...props} />}
         {props.tab === 'library' && (props.files.length ? <div className="file-list">{props.files.map((file) => <div key={file.id}><div><strong>{file.filenameLocal}</strong><span>{file.localPath}</span></div><small>{formatBytes(file.sizeBytes)} · {file.status}</small></div>)}</div> : <EmptyState title="Noch keine Dateien" text="Starte den ersten Sync, um die lokale Bibliothek zu füllen." />)}
-        {props.tab === 'settings' && <div className="panel settings"><h3>Speicherort</h3><p>{props.libraryPath}</p><h3>Synchronisation</h3><p>Manuell über Dashboard oder Statusbar.</p><h3>Transkription</h3><p>Modus: {props.transcriptionSettings.mode} · Modell: {props.transcriptionSettings.model} · Worker: {props.workerStatus.installed ? 'bereit' : 'nicht eingerichtet'}</p>{!props.workerStatus.installed && <button className="button secondary" type="button" onClick={() => void props.setupWorker()}>Worker einrichten</button>}<h3>MCP</h3><button className={props.mcpStatus.enabled ? 'button secondary' : 'button primary'} type="button" disabled={props.busy} onClick={() => void props.setMcpEnabled(!props.mcpStatus.enabled)}>{props.mcpStatus.enabled ? 'MCP deaktivieren' : 'MCP aktivieren'}</button>{props.mcpStatus.enabled && <><McpConnectionDetails status={props.mcpStatus} /><button className="text-button" type="button" onClick={() => void props.regenerateMcpToken()}>Bearer-Token erneuern</button></>}<h3>Konto</h3><button className="button danger" type="button" disabled={props.busy} onClick={() => void props.handleLogout()}>Abmelden</button><p><small>Entfernt die gespeicherten Zugangsdaten aus der Keychain und deaktiviert MCP.</small></p></div>}
+        {props.tab === 'settings' && <div className="panel settings"><h3>Speicherort</h3><p>{props.libraryPath}</p><h3>Synchronisation</h3><SyncModeSettings {...props} /><h3>Transkription</h3><p>Modus: {props.transcriptionSettings.mode} · Modell: {props.transcriptionSettings.model} · Worker: {props.workerStatus.installed ? 'bereit' : 'nicht eingerichtet'}</p>{!props.workerStatus.installed && <button className="button secondary" type="button" onClick={() => void props.setupWorker()}>Worker einrichten</button>}<h3>MCP</h3><button className={props.mcpStatus.enabled ? 'button secondary' : 'button primary'} type="button" disabled={props.busy} onClick={() => void props.setMcpEnabled(!props.mcpStatus.enabled)}>{props.mcpStatus.enabled ? 'MCP deaktivieren' : 'MCP aktivieren'}</button>{props.mcpStatus.enabled && <><McpConnectionDetails status={props.mcpStatus} /><button className="text-button" type="button" onClick={() => void props.regenerateMcpToken()}>Bearer-Token erneuern</button></>}<h3>Konto</h3><button className="button danger" type="button" disabled={props.busy} onClick={() => void props.handleLogout()}>Abmelden</button><p><small>Entfernt die gespeicherten Zugangsdaten aus der Keychain und deaktiviert MCP.</small></p></div>}
       </section>
     </main>
   </div>;
@@ -964,6 +1023,49 @@ function TranscriptionPanel(props: {
         text="Scanne ausgewählte Kurse nach Aufzeichnungen und reihe sie anschließend ein."
       />
     )}
+  </>;
+}
+
+function SyncModeSettings(props: {
+  syncIntervalMinutes: number | null;
+  saveSyncInterval(minutes: number): Promise<void>;
+  editingSyncMode: boolean;
+  setEditingSyncMode(value: boolean): void;
+  busy: boolean;
+}): React.JSX.Element {
+  const currentLabel = props.syncIntervalMinutes
+    ? SYNC_INTERVAL_OPTIONS.find((option) => option.minutes === props.syncIntervalMinutes)?.label
+      ?? `Alle ${props.syncIntervalMinutes} Minuten`
+    : 'Nur manuell';
+  return <>
+    <p>{currentLabel} <button className="text-button" type="button" onClick={() => props.setEditingSyncMode(!props.editingSyncMode)}>Ändern</button></p>
+    {props.editingSyncMode && <>
+      <OptionCard
+        title="Nur manuell"
+        text="Du startest jeden Sync im Dashboard selbst."
+        selected={!props.syncIntervalMinutes}
+        onClick={() => void props.saveSyncInterval(0)}
+      />
+      <OptionCard
+        title="Automatischer Hintergrundsync"
+        text="Die App synchronisiert in einem festen Intervall im Hintergrund."
+        selected={!!props.syncIntervalMinutes}
+        onClick={() => void props.saveSyncInterval(30)}
+      />
+      {!!props.syncIntervalMinutes && (
+        <label>Intervall
+          <select
+            value={props.syncIntervalMinutes}
+            disabled={props.busy}
+            onChange={(event) => void props.saveSyncInterval(Number(event.target.value))}
+          >
+            {SYNC_INTERVAL_OPTIONS.map((option) => (
+              <option key={option.minutes} value={option.minutes}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      )}
+    </>}
   </>;
 }
 
