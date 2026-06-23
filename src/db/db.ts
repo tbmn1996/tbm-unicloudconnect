@@ -31,6 +31,21 @@ const MIGRATIONS: Readonly<Partial<Record<number, (db: AppDatabase) => void>>> =
       CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_jobs_recording_key ON transcript_jobs(recording_key) WHERE recording_key IS NOT NULL;
     `);
   },
+  3: (db) => {
+    // Erstelle output_refs Tabelle (Migration 2→3)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS output_refs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_entity_type TEXT NOT NULL CHECK (source_entity_type IN ('file_asset', 'transcript_job')),
+        source_entity_id INTEGER NOT NULL,
+        notion_database_id TEXT NOT NULL,
+        notion_page_id TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_output_refs_source ON output_refs(source_entity_type, source_entity_id, notion_database_id);
+    `);
+  },
 };
 
 /**

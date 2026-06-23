@@ -12,7 +12,7 @@
  */
 
 /** Aktuelle Schema-Version; wird in PRAGMA user_version geschrieben. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const SCHEMA_SQL = `
 -- profiles: Nutzerprofile (i. d. R. genau eines im MVP)
@@ -165,6 +165,19 @@ CREATE TABLE IF NOT EXISTS mcp_status (
   configured_at TEXT,
   last_checked_at TEXT
 );
+
+-- output_refs: Notion-Output-Referenzen für synchronisierte Items
+CREATE TABLE IF NOT EXISTS output_refs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_entity_type TEXT NOT NULL CHECK (source_entity_type IN ('file_asset', 'transcript_job')),
+  source_entity_id INTEGER NOT NULL,
+  notion_database_id TEXT NOT NULL,
+  notion_page_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_output_refs_source ON output_refs(source_entity_type, source_entity_id, notion_database_id);
 
 CREATE INDEX IF NOT EXISTS idx_activities_course ON activities(course_id);
 CREATE INDEX IF NOT EXISTS idx_file_assets_course ON file_assets(course_id);

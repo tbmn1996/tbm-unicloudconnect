@@ -80,6 +80,28 @@ function createV1Database(path: string): Database.Database {
   return db;
 }
 
+/**
+ * Erstelle eine v2-Datenbank: erstelle v1 und wende die v2-Migrationsänderungen an,
+ * setze PRAGMA user_version = 2.
+ */
+function createV2Database(path: string): Database.Database {
+  const db = createV1Database(path);
+  db.exec(`
+    ALTER TABLE transcript_jobs ADD COLUMN recording_key TEXT;
+    ALTER TABLE transcript_jobs ADD COLUMN title TEXT;
+    ALTER TABLE transcript_jobs ADD COLUMN source_type TEXT CHECK (source_type IN ('opencast','youtube','media'));
+    ALTER TABLE transcript_jobs ADD COLUMN media_url TEXT;
+    ALTER TABLE transcript_jobs ADD COLUMN needs_auth INTEGER NOT NULL DEFAULT 0 CHECK (needs_auth IN (0,1));
+    ALTER TABLE transcript_jobs ADD COLUMN section_name TEXT;
+    ALTER TABLE transcript_jobs ADD COLUMN section_index INTEGER;
+    ALTER TABLE transcript_jobs ADD COLUMN recording_date TEXT;
+    ALTER TABLE transcript_jobs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_jobs_recording_key ON transcript_jobs(recording_key) WHERE recording_key IS NOT NULL;
+  `);
+  db.pragma('user_version = 2');
+  return db;
+}
+
 test('Migration v1→v2: simulierte v1-DB wird auf v2 gehoben', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
   const path = join(dir, 'state.sqlite');
@@ -103,9 +125,9 @@ test('Migration v1→v2: simulierte v1-DB wird auf v2 gehoben', () => {
     assert.ok(columnNames.includes('recording_date'), 'recording_date sollte vorhanden sein');
     assert.ok(columnNames.includes('retry_count'), 'retry_count sollte vorhanden sein');
 
-    // Prüfe: user_version ist jetzt 2
+    // Prüfe: user_version ist jetzt SCHEMA_VERSION
     const versionAfter = db.pragma('user_version', { simple: true });
-    assert.equal(versionAfter, 2);
+    assert.equal(versionAfter, SCHEMA_VERSION);
 
     // Prüfe: der UNIQUE INDEX existiert
     const indexes = db.prepare(
@@ -118,13 +140,13 @@ test('Migration v1→v2: simulierte v1-DB wird auf v2 gehoben', () => {
   }
 });
 
-test('Neuinstallation legt direkt v2 mit allen Spalten an', () => {
+test('Neuinstallation legt direkt v3 mit allen Spalten an', () => {
   const db = openDatabase(':memory:');
   try {
-    // Prüfe: user_version ist 2
+    // Prüfe: user_version ist 3
     const version = db.pragma('user_version', { simple: true });
     assert.equal(version, SCHEMA_VERSION, `user_version sollte ${SCHEMA_VERSION} sein`);
-    assert.equal(SCHEMA_VERSION, 2);
+    assert.equal(SCHEMA_VERSION, 3);
 
     // Prüfe: alle v2-Spalten sind in der neu erstellten Tabelle vorhanden
     const tableInfo = db.prepare("PRAGMA table_info(transcript_jobs)").all() as Array<{ name: string }>;
@@ -145,8 +167,55 @@ test('Neuinstallation legt direkt v2 mit allen Spalten an', () => {
       "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_transcript_jobs_recording_key'",
     ).all() as Array<{ name: string }>;
     assert.equal(indexes.length, 1, 'UNIQUE INDEX idx_transcript_jobs_recording_key sollte existieren');
+
+    // Prüfe output_refs
+    const outputRefsInfo = db.prepare("PRAGMA table_info(output_refs)").all() as Array<{ name: string }>;
+    const outputRefsCols = outputRefsInfo.map((c) => c.name);
+    assert.ok(outputRefsCols.includes('id'));
+    assert.ok(outputRefsCols.includes('source_entity_type'));
+    assert.ok(outputRefsCols.includes('source_entity_id'));
+    assert.ok(outputRefsCols.includes('notion_database_id'));
+    assert.ok(outputRefsCols.includes('notion_page_id'));
+    assert.ok(outputRefsCols.includes('created_at'));
+    assert.ok(outputRefsCols.includes('updated_at'));
   } finally {
     db.close();
+  }
+});
+
+test('Migration v2→v3: simulierte v2-DB wird auf v3 gehoben', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
+  const path = join(dir, 'state.sqlite');
+  const v2 = createV2Database(path);
+  assert.equal(v2.pragma('user_version', { simple: true }), 2);
+  v2.close();
+
+  const db = openDatabase(path);
+  try {
+    // Prüfe: die neue Tabelle output_refs ist vorhanden
+    const tableInfo = db.prepare("PRAGMA table_info(output_refs)").all() as Array<{ name: string }>;
+    const columnNames = tableInfo.map((c) => c.name);
+
+    assert.ok(columnNames.includes('id'), 'id sollte vorhanden sein');
+    assert.ok(columnNames.includes('source_entity_type'), 'source_entity_type sollte vorhanden sein');
+    assert.ok(columnNames.includes('source_entity_id'), 'source_entity_id sollte vorhanden sein');
+    assert.ok(columnNames.includes('notion_database_id'), 'notion_database_id sollte vorhanden sein');
+    assert.ok(columnNames.includes('notion_page_id'), 'notion_page_id sollte vorhanden sein');
+    assert.ok(columnNames.includes('created_at'), 'created_at sollte vorhanden sein');
+    assert.ok(columnNames.includes('updated_at'), 'updated_at sollte vorhanden sein');
+
+    // Prüfe: user_version ist jetzt 3
+    const versionAfter = db.pragma('user_version', { simple: true });
+    assert.equal(versionAfter, 3);
+
+    // Prüfe: der UNIQUE INDEX existiert
+    const indexes = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_output_refs_source'",
+    ).all() as Array<{ name: string }>;
+    assert.equal(indexes.length, 1, 'UNIQUE INDEX idx_output_refs_source sollte existieren');
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

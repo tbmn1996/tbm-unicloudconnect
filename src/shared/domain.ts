@@ -261,7 +261,20 @@ export interface McpStatus {
   lastCheckedAt: string | null;
 }
 
+export type OutputRefSourceType = 'file_asset' | 'transcript_job';
+
+export interface OutputRef {
+  id: number;
+  sourceEntityType: OutputRefSourceType;
+  sourceEntityId: number;
+  notionDatabaseId: string;
+  notionPageId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ---------------------------------------------------------------------------
+
 // View-/IPC-Hilfstypen (vom Renderer konsumiert)
 // ---------------------------------------------------------------------------
 

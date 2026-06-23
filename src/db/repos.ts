@@ -15,6 +15,8 @@ import type {
   DownloadJobStatus,
   FileAsset,
   McpStatus,
+  OutputRef,
+  OutputRefSourceType,
   Profile,
   RecordingSourceKind,
   SelectionRule,
@@ -68,12 +70,12 @@ export function makeProfilesRepo(db: AppDatabase) {
 // --- credential_refs --------------------------------------------------------
 
 export function makeCredentialRefsRepo(db: AppDatabase) {
-  const get = db.prepare('SELECT * FROM credential_refs ORDER BY id LIMIT 1');
+  const get = db.prepare('SELECT * FROM credential_refs WHERE provider = ? ORDER BY id LIMIT 1');
   const upsert = db.prepare(
     `INSERT INTO credential_refs (provider, secret_store, service_name, account_name)
      VALUES (@provider, @secretStore, @serviceName, @accountName)`,
   );
-  const clear = db.prepare('DELETE FROM credential_refs');
+  const clear = db.prepare('DELETE FROM credential_refs WHERE provider = ?');
   const setVerified = db.prepare('UPDATE credential_refs SET last_verified_at = ? WHERE id = ?');
 
   const map = (r: Record<string, unknown>): CredentialRef => ({
@@ -86,14 +88,14 @@ export function makeCredentialRefsRepo(db: AppDatabase) {
   });
 
   return {
-    get(): CredentialRef | null {
-      const row = get.get() as Record<string, unknown> | undefined;
+    get(provider = 'learnweb'): CredentialRef | null {
+      const row = get.get(provider) as Record<string, unknown> | undefined;
       return row ? map(row) : null;
     },
     /** Es gibt im MVP genau einen LearnWeb-Credential-Verweis -> ersetzen. */
     set(input: { serviceName: string; accountName: string; provider?: string }): void {
       const tx = db.transaction(() => {
-        clear.run();
+        clear.run(input.provider ?? 'learnweb');
         upsert.run({
           provider: input.provider ?? 'learnweb',
           secretStore: 'macos_keychain',
@@ -107,8 +109,8 @@ export function makeCredentialRefsRepo(db: AppDatabase) {
       setVerified.run(nowIso(), id);
     },
     /** Löscht alle Credential-Referenzen (Logout). */
-    clear(): void {
-      clear.run();
+    clear(provider = 'learnweb'): void {
+      clear.run(provider);
     },
   };
 }
@@ -756,6 +758,51 @@ export function makeMcpStatusRepo(db: AppDatabase) {
   };
 }
 
+// --- output_refs ------------------------------------------------------------
+
+export function makeOutputRefsRepo(db: AppDatabase) {
+  const insert = db.prepare(
+    `INSERT INTO output_refs (source_entity_type, source_entity_id, notion_database_id, notion_page_id)
+     VALUES (@sourceEntityType, @sourceEntityId, @notionDatabaseId, @notionPageId)`,
+  );
+  const bySource = db.prepare(
+    `SELECT * FROM output_refs WHERE source_entity_type = ? AND source_entity_id = ? AND notion_database_id = ?`,
+  );
+  const remove = db.prepare('DELETE FROM output_refs WHERE id = ?');
+  const clearAll = db.prepare('DELETE FROM output_refs');
+
+  const map = (r: Record<string, unknown>): OutputRef => ({
+    id: r.id as number,
+    sourceEntityType: r.source_entity_type as OutputRefSourceType,
+    sourceEntityId: r.source_entity_id as number,
+    notionDatabaseId: r.notion_database_id as string,
+    notionPageId: (r.notion_page_id as string | null) ?? null,
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
+  });
+
+  return {
+    insert(input: Omit<OutputRef, 'id' | 'createdAt' | 'updatedAt'>): number {
+      return Number(insert.run({
+        sourceEntityType: input.sourceEntityType,
+        sourceEntityId: input.sourceEntityId,
+        notionDatabaseId: input.notionDatabaseId,
+        notionPageId: input.notionPageId ?? null,
+      }).lastInsertRowid);
+    },
+    getBySource(sourceEntityType: OutputRefSourceType, sourceEntityId: number, notionDatabaseId: string): OutputRef | null {
+      const row = bySource.get(sourceEntityType, sourceEntityId, notionDatabaseId) as Record<string, unknown> | undefined;
+      return row ? map(row) : null;
+    },
+    delete(id: number): void {
+      remove.run(id);
+    },
+    clear(): void {
+      clearAll.run();
+    },
+  };
+}
+
 // --- Aggregator -------------------------------------------------------------
 
 export function createRepos(db: AppDatabase) {
@@ -771,6 +818,7 @@ export function createRepos(db: AppDatabase) {
     syncRuns: makeSyncRunsRepo(db),
     settings: makeSettingsRepo(db),
     mcp: makeMcpStatusRepo(db),
+    outputRefs: makeOutputRefsRepo(db),
   };
 }
 

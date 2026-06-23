@@ -12,6 +12,7 @@ const EXPECTED_TABLES = [
   'download_jobs',
   'file_assets',
   'mcp_status',
+  'output_refs',
   'profiles',
   'selection_rules',
   'settings',
@@ -128,3 +129,82 @@ test('Kontodaten werden per Kurs-Cascade gelöscht, lokale Einstellungen bleiben
     db.close();
   }
 });
+
+test('Credentials: get, set, clear sind nach Provider getrennt', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const repos = createRepos(db);
+    
+    // Setze LearnWeb credential
+    repos.credentials.set({ serviceName: 'learnweb-service', accountName: 'lw-user', provider: 'learnweb' });
+    // Setze Notion credential
+    repos.credentials.set({ serviceName: 'notion-service', accountName: 'notion-user', provider: 'notion' });
+    
+    // Prüfe, ob beide unabhängig voneinander gelesen werden können
+    const lwCred = repos.credentials.get('learnweb');
+    const notionCred = repos.credentials.get('notion');
+    
+    assert.ok(lwCred);
+    assert.equal(lwCred.accountName, 'lw-user');
+    assert.ok(notionCred);
+    assert.equal(notionCred.accountName, 'notion-user');
+    
+    // Lösche nur Notion-Credentials
+    repos.credentials.clear('notion');
+    assert.equal(repos.credentials.get('notion'), null);
+    assert.ok(repos.credentials.get('learnweb')); // Learnweb muss noch da sein!
+    
+    // Lösche LearnWeb-Credentials
+    repos.credentials.clear('learnweb');
+    assert.equal(repos.credentials.get('learnweb'), null);
+  } finally {
+    db.close();
+  }
+});
+
+test('outputRefs-Repository speichert, holt und dedupliziert Referenzen', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const repos = createRepos(db);
+    
+    // Versuche getBySource auf leere DB
+    const emptyRef = repos.outputRefs.getBySource('file_asset', 123, 'db-notion-1');
+    assert.equal(emptyRef, null);
+    
+    // Insert eine Referenz
+    const refId = repos.outputRefs.insert({
+      sourceEntityType: 'file_asset',
+      sourceEntityId: 123,
+      notionDatabaseId: 'db-notion-1',
+      notionPageId: 'page-notion-1'
+    });
+    assert.ok(refId > 0);
+    
+    // Hole sie ab
+    const ref = repos.outputRefs.getBySource('file_asset', 123, 'db-notion-1');
+    assert.ok(ref);
+    assert.equal(ref.id, refId);
+    assert.equal(ref.sourceEntityType, 'file_asset');
+    assert.equal(ref.sourceEntityId, 123);
+    assert.equal(ref.notionDatabaseId, 'db-notion-1');
+    assert.equal(ref.notionPageId, 'page-notion-1');
+    
+    // Versuche dieselbe Kombination (entity_type, entity_id, notion_database_id) einzufügen (Unique constraint check)
+    assert.throws(() => {
+      repos.outputRefs.insert({
+        sourceEntityType: 'file_asset',
+        sourceEntityId: 123,
+        notionDatabaseId: 'db-notion-1',
+        notionPageId: 'page-notion-2'
+      });
+    }, /UNIQUE constraint failed/);
+    
+    // Delete
+    repos.outputRefs.delete(refId);
+    assert.equal(repos.outputRefs.getBySource('file_asset', 123, 'db-notion-1'), null);
+    
+  } finally {
+    db.close();
+  }
+});
+
