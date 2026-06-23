@@ -14,6 +14,9 @@ import {
 } from '../src/learnweb-core/session';
 import type { Activity } from '../src/shared/domain';
 import { SyncEngine } from '../src/sync-engine/engine';
+import { FilesystemAdapter } from '../src/output-adapters/filesystem-adapter';
+import { OutputRouter } from '../src/output-adapters/router';
+import type { OutputTarget } from '../src/output-adapters/types';
 
 test('Sync-Engine lädt ausgewählte Kursdateien und protokolliert den Lauf', async () => {
   const db = openDatabase(':memory:');
@@ -260,6 +263,71 @@ test('Timeout beim Download führt zu failed_retryable mit spezifischer Fehlerme
     assert.equal(job?.status, 'failed_retryable');
     assert.match(job?.errorMessage ?? '', /Zeitlimit/);
     assert.equal(repos.activities.getByCourse(7)[0]?.status, 'failed');
+  } finally {
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Sync-Engine schreibt output_refs, wenn der Output-Router einen Notion-Push meldet (Issue #23 Part 3)', async () => {
+  const db = openDatabase(':memory:');
+  const root = await mkdtemp(join(tmpdir(), 'unicloud-sync-'));
+  try {
+    const repos = createRepos(db);
+    repos.courses.upsertMany([{ courseId: 7, fullname: 'Softwaretechnik', semester: 'SoSe 2026' }]);
+    repos.courses.setSelected(7, true);
+    repos.settings.set('output.adapter', 'both');
+    repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+    const activity = { cmid: 11, courseId: 7, modtype: 'resource', name: 'Skript', sectionName: 'Woche 1' };
+    const fakeClient = {
+      listActivities: async () => [activity],
+      resolveDownloadTargets: async () => [{
+        activityCmid: 11,
+        sourceUrl: 'https://learnweb.example/skript.pdf',
+        filename: 'skript.pdf',
+      }],
+    } as unknown as LearnwebClient;
+    const fakeSession = {
+      downloadFile: async () => ({
+        status: 200,
+        contentType: 'application/pdf',
+        filename: 'skript.pdf',
+        bytes: Buffer.from('PDF-Inhalt'),
+      }),
+    } as unknown as LearnwebSession;
+
+    // Echter Filesystem-Adapter (lokaler Schreibpfad bleibt unverändert geprüft) +
+    // Fake-Notion-Adapter, der einen Push simuliert, ohne echten Netzwerkzugriff.
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({
+        adapter: 'notion',
+        duplicate: false,
+        remoteRef: 'notion-page-1',
+        hash: 'irrelevant',
+        sizeBytes: 0,
+        filename: 'skript.pdf',
+      }),
+      placeTranscript: async () => ({ adapter: 'notion' }),
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(root), notion: fakeNotionAdapter },
+      repos.settings,
+    );
+
+    const engine = new SyncEngine(
+      repos,
+      { getClient: async () => fakeClient, getSession: async () => fakeSession, getLibraryPath: () => root },
+      undefined,
+      async () => router,
+    );
+
+    await engine.run();
+
+    const asset = repos.fileAssets.getAll()[0];
+    assert.equal(asset?.status, 'downloaded');
+    const ref = repos.outputRefs.getBySource('file_asset', asset!.id, 'db-xyz');
+    assert.equal(ref?.notionPageId, 'notion-page-1');
   } finally {
     db.close();
     await rm(root, { recursive: true, force: true });

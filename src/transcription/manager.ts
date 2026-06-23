@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -8,7 +8,12 @@ import type { Repos } from '../db/repos';
 import { LearnwebClient } from '../learnweb-core/client';
 import type { LearnwebSession } from '../learnweb-core/session';
 import { sanitizePathSegment } from '../local-library/paths';
+import { FilesystemAdapter } from '../output-adapters/filesystem-adapter';
+import { createNotionAdapter } from '../output-adapters/notion-adapter';
+import { OutputRouter } from '../output-adapters/router';
+import { OUTPUT_NOTION_DATABASE_ID_SETTING_KEY } from '../output-adapters/types';
 import type {
+  Course,
   RecordingCandidate,
   TranscriptJob,
   TranscriptionPhase,
@@ -58,6 +63,12 @@ export interface TranscriptionManagerOptions {
     onProgress: (progress: WorkerProgress) => void,
     signal: AbortSignal,
   ) => Promise<WorkerResult>;
+  /**
+   * Baut den Output-Router für den Notion-Push nach erfolgreicher
+   * Transkription. Optional, damit bestehende Aufrufstellen/Tests
+   * unverändert bleiben — Default baut intern aus `repos`.
+   */
+  outputRouterFactory?: (libraryPath: string) => Promise<OutputRouter>;
 }
 
 export class TranscriptionManager {
@@ -338,6 +349,9 @@ export class TranscriptionManager {
         model: result.model,
         durationSeconds: result.durationSeconds,
       });
+      // Worker hat die .md-Datei bereits geschrieben (Subprozess-Vertrag bleibt
+      // unverändert) — Notion-Push ist ein zusätzlicher, additiver Schritt danach.
+      await this.pushTranscriptToOutputRouter(job, course, libraryRoot, result);
       this.options.repos.transcriptJobs.setStatus(job.id, 'done', { mediaLocalPath: null });
       this.message = 'Transkript wurde erstellt.';
     } catch (error) {
@@ -359,6 +373,57 @@ export class TranscriptionManager {
       this.progress = undefined;
       this.publish();
     }
+  }
+
+  /**
+   * Liest die vom Worker geschriebene .md-Datei zurück und reicht sie an den
+   * Output-Router weiter (Notion-Leg läuft nur, wenn konfiguriert — das
+   * entscheidet der Router selbst). Schlägt dieser zusätzliche Schritt fehl,
+   * darf das einen bereits erfolgreich transkribierten Job NICHT als
+   * fehlgeschlagen markieren — Fehler werden nur geloggt.
+   */
+  private async pushTranscriptToOutputRouter(
+    job: TranscriptJob,
+    course: Course,
+    libraryRoot: string,
+    result: WorkerResult,
+  ): Promise<void> {
+    try {
+      const router = await (this.options.outputRouterFactory
+        ? this.options.outputRouterFactory(libraryRoot)
+        : this.buildDefaultRouter(libraryRoot));
+      const markdown = await readFile(result.transcriptPath, 'utf-8');
+      const placed = await router.placeTranscript({
+        course: { courseId: course.courseId, fullname: course.fullname, semester: course.semester },
+        title: job.title,
+        recordingDate: job.recordingDate,
+        model: result.model,
+        durationSeconds: result.durationSeconds,
+        markdown,
+        alreadyWrittenLocalPath: result.transcriptPath,
+      });
+      if (placed.notion?.remoteRef) {
+        const notionDatabaseId = this.options.repos.settings.get(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY);
+        if (notionDatabaseId) {
+          this.options.repos.outputRefs.insert({
+            sourceEntityType: 'transcript_job',
+            sourceEntityId: job.id,
+            notionDatabaseId,
+            notionPageId: placed.notion.remoteRef,
+          });
+        }
+      }
+    } catch (error) {
+      console.error(`[transcription] Output-Router-Push für Job ${job.id} fehlgeschlagen:`, error);
+    }
+  }
+
+  private async buildDefaultRouter(libraryPath: string): Promise<OutputRouter> {
+    const notion = await createNotionAdapter(this.options.repos);
+    return new OutputRouter(
+      { filesystem: new FilesystemAdapter(libraryPath), notion: notion ?? undefined },
+      this.options.repos.settings,
+    );
   }
 
   private setPhase(phase: TranscriptionPhase, message: string): void {

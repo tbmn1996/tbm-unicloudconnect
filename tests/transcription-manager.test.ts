@@ -7,6 +7,9 @@ import { openDatabase } from '../src/db/db';
 import { createRepos } from '../src/db/repos';
 import type { LearnwebSession } from '../src/learnweb-core/session';
 import { TranscriptionManager } from '../src/transcription/manager';
+import { FilesystemAdapter } from '../src/output-adapters/filesystem-adapter';
+import { OutputRouter } from '../src/output-adapters/router';
+import type { OutputTarget } from '../src/output-adapters/types';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'ucc-manager-'));
@@ -188,6 +191,49 @@ test('TranscriptionManager meldet Fortschritt beim Scannen und beim Download', a
     assert.ok(firstDownload);
     assert.deepEqual(firstDownload.progress, { done: 50 * 1024 * 1024, total: 100 * 1024 * 1024 });
     assert.match(firstDownload.message ?? '', /50.0 MB von 100.0 MB/);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('TranscriptionManager schreibt output_refs, wenn der Output-Router einen Notion-Push meldet (Issue #23 Part 3)', async () => {
+  const f = fixture();
+  try {
+    f.repos.settings.set('output.adapter', 'both');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({ adapter: 'notion', duplicate: false, remoteRef: 'irrelevant', hash: '', sizeBytes: 0, filename: '' }),
+      placeTranscript: async () => ({ adapter: 'notion', remoteRef: 'transcript-page-1' }),
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(f.root), notion: fakeNotionAdapter },
+      f.repos.settings,
+    );
+
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => f.root,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+      outputRouterFactory: async () => router,
+      runWorker: async (request, onProgress) => {
+        onProgress({ phase: 'transcribing', done: 50, total: 100 });
+        mkdirSync(dirname(request.output_path), { recursive: true });
+        writeFileSync(request.output_path, '# Transkript', { encoding: 'utf8', flag: 'w' });
+        return { transcriptPath: request.output_path, model: 'mlx-whisper:small', durationSeconds: 61 };
+      },
+    });
+    const candidates = await manager.scanRecordings();
+    manager.enqueue([candidates[0]!.recordingKey]);
+    await manager.start();
+
+    const job = manager.getJobs()[0]!;
+    assert.equal(job.status, 'done');
+    const ref = f.repos.outputRefs.getBySource('transcript_job', job.id, 'db-xyz');
+    assert.equal(ref?.notionPageId, 'transcript-page-1');
   } finally {
     f.cleanup();
   }

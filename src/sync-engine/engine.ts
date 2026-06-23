@@ -5,8 +5,10 @@ import {
   LearnwebTimeoutError,
   type LearnwebSession,
 } from '../learnweb-core/session';
-import { buildRelativeLibraryPath } from '../local-library/paths';
-import { storeFile } from '../local-library/store';
+import { FilesystemAdapter } from '../output-adapters/filesystem-adapter';
+import { createNotionAdapter } from '../output-adapters/notion-adapter';
+import { OutputRouter } from '../output-adapters/router';
+import { OUTPUT_NOTION_DATABASE_ID_SETTING_KEY } from '../output-adapters/types';
 import type { ActivityStatus, Course, DownloadJob, SyncRun, SyncStatus } from '../shared/domain';
 
 type DownloadOutcome = Extract<ActivityStatus, 'downloaded' | 'deferred' | 'failed'>;
@@ -28,7 +30,21 @@ export class SyncEngine {
     private readonly repos: Repos,
     private readonly access: SyncAccess,
     private readonly onStatus: (status: SyncStatus) => void = () => undefined,
+    /**
+     * Baut den Output-Router für einen Sync-Lauf. Optional, damit bestehende
+     * Aufrufstellen/Tests unverändert bleiben — Default baut intern aus
+     * `this.repos` (Filesystem immer aktiv, Notion additiv falls konfiguriert).
+     */
+    private readonly outputRouterFactory?: (libraryPath: string) => Promise<OutputRouter>,
   ) {}
+
+  private async buildDefaultRouter(libraryPath: string): Promise<OutputRouter> {
+    const notion = await createNotionAdapter(this.repos);
+    return new OutputRouter(
+      { filesystem: new FilesystemAdapter(libraryPath), notion: notion ?? undefined },
+      this.repos.settings,
+    );
+  }
 
   getStatus(): SyncStatus {
     return this.status;
@@ -56,6 +72,10 @@ export class SyncEngine {
   private async execute(trigger: 'manual' | 'startup' | 'scheduled'): Promise<void> {
     const libraryPath = this.access.getLibraryPath();
     if (!libraryPath) throw new Error('Kein Bibliotheksordner konfiguriert.');
+    // Einmal pro Lauf bauen (nicht pro Datei) — vermeidet wiederholte Keychain-/Settings-Lookups.
+    const router = await (this.outputRouterFactory
+      ? this.outputRouterFactory(libraryPath)
+      : this.buildDefaultRouter(libraryPath));
 
     const courses = this.repos.courses.getSelected();
     const runId = this.repos.syncRuns.start(trigger);
@@ -85,7 +105,7 @@ export class SyncEngine {
               course,
               activity,
               target,
-              libraryPath,
+              router,
               session,
               counters,
             })));
@@ -122,7 +142,7 @@ export class SyncEngine {
     course: Course;
     activity: { cmid: number; sectionName: string | null };
     target: { activityCmid: number; sourceUrl: string; filename: string };
-    libraryPath: string;
+    router: OutputRouter;
     session: LearnwebSession;
     counters: { downloaded: number; warnings: number; errors: number };
   }): Promise<DownloadOutcome> {
@@ -137,33 +157,44 @@ export class SyncEngine {
       const download = await input.session.downloadFile(input.target.sourceUrl, {
         timeoutMs: DOWNLOAD_TIMEOUT_MS,
       });
-      const relativePath = buildRelativeLibraryPath({
-        semester: input.course.semester,
-        courseName: input.course.fullname,
+      const placed = await input.router.placeFile({
+        course: {
+          courseId: input.course.courseId,
+          fullname: input.course.fullname,
+          semester: input.course.semester,
+        },
         sectionName: input.activity.sectionName,
         filename: download.filename ?? input.target.filename,
-      });
-      const stored = await storeFile({
-        rootPath: input.libraryPath,
-        relativePath,
         bytes: download.bytes,
         findExistingByHash: (hash) => this.repos.fileAssets.findByHash(hash),
       });
-      this.repos.fileAssets.upsertBySourceUrl({
+      const stored = placed.filesystem;
+      const fileAsset = this.repos.fileAssets.upsertBySourceUrl({
         activityCmid: input.target.activityCmid,
         courseId: input.course.courseId,
         sourceUrl: input.target.sourceUrl,
         filenameOriginal: download.filename ?? input.target.filename,
         filenameLocal: stored.filename,
-        localPath: stored.relativePath,
+        localPath: stored.relativePath ?? '',
         sizeBytes: stored.sizeBytes,
         hash: stored.hash,
         status: stored.duplicate ? 'skipped_duplicate' : 'downloaded',
         downloadedAt: new Date().toISOString(),
       });
+      if (placed.notion?.remoteRef) {
+        const notionDatabaseId = this.repos.settings.get(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY);
+        if (notionDatabaseId) {
+          this.repos.outputRefs.insert({
+            sourceEntityType: 'file_asset',
+            sourceEntityId: fileAsset.id,
+            notionDatabaseId,
+            notionPageId: placed.notion.remoteRef,
+          });
+        }
+      }
       this.updateJob(jobId, {
         status: stored.duplicate ? 'skipped_duplicate' : 'done',
-        localPath: stored.relativePath,
+        localPath: stored.relativePath ?? null,
         sizeBytes: stored.sizeBytes,
       });
       if (!stored.duplicate) input.counters.downloaded++;
