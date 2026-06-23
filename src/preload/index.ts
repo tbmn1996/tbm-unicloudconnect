@@ -64,6 +64,13 @@ const api: UniCloudApi = {
   setMcpEnabled: (input) => ipcRenderer.invoke(IPC.setMcpEnabled, input),
   regenerateMcpToken: () => ipcRenderer.invoke(IPC.regenerateMcpToken),
 
+  // Notion-Anbindung (Issue #27, Part 4)
+  verifyNotionToken: (input) => ipcRenderer.invoke(IPC.verifyNotionToken, input),
+  searchNotionDatabases: (input) => ipcRenderer.invoke(IPC.searchNotionDatabases, input),
+  getNotionConfig: () => ipcRenderer.invoke(IPC.getNotionConfig),
+  setNotionDatabase: (input) => ipcRenderer.invoke(IPC.setNotionDatabase, input),
+  setNotionOutputMode: (input) => ipcRenderer.invoke(IPC.setNotionOutputMode, input),
+
   // Events Main → Renderer
   onSyncStatus: (callback) => {
     const listener = (_event: IpcRendererEvent, status: SyncStatus) => callback(status);

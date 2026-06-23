@@ -265,6 +265,18 @@ input:focus { border-color: #0a84ff; box-shadow: 0 0 0 3px rgba(10,132,255,.13);
   border-radius: 6px;
 }
 
+/* Notion-Anbindung (Issue #27, Part 4) */
+.badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #6e6e73; background: #f0f0f2; border: 1px solid #e5e5e7; white-space: nowrap; }
+.badge.success { color: #197447; background: rgba(48,164,108,.1); border-color: rgba(48,164,108,.3); }
+.notion-db-picker { position: relative; }
+.notion-db-picker > input { width: 100%; }
+.notion-db-results { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow-y: auto; background: #fff; border: 1px solid #dedee1; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.1); padding: 6px; }
+.notion-db-empty { padding: 10px 12px; color: #86868b; font-size: 13px; }
+.notion-db-option { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; font-size: 13px; }
+.notion-db-option:hover, .notion-db-option.active { background: #f0f6ff; }
+.notion-db-icon { width: 20px; flex: none; text-align: center; }
+.notion-db-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 @keyframes pulse {
   0% { transform: scale(.85); opacity: .6; }
   50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 4px rgba(94, 92, 230, 0.22); }

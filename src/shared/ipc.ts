@@ -19,6 +19,9 @@ import type {
   LoginResult,
   McpRuntimeStatus,
   McpStatus,
+  NotionConfigState,
+  NotionDatabaseSummary,
+  OutputAdapterMode,
   RecordingCandidate,
   SyncStatus,
   TranscriptionSettings,
@@ -73,6 +76,12 @@ export const IPC = {
   getMcpRuntimeStatus: 'mcp:getRuntimeStatus',
   setMcpEnabled: 'mcp:setEnabled',
   regenerateMcpToken: 'mcp:regenerateToken',
+  // Notion-Anbindung (Issue #27, Part 4) — Token bleibt im Main-Prozess / Keychain
+  verifyNotionToken: 'notion:verify-token',
+  searchNotionDatabases: 'notion:search-databases',
+  getNotionConfig: 'notion:get-config',
+  setNotionDatabase: 'notion:set-database',
+  setNotionOutputMode: 'notion:set-output-mode',
   // Events Main → Renderer
   evtSyncStatus: 'evt:syncStatus',
   evtTranscriptionStatus: 'evt:transcriptionStatus',
@@ -147,6 +156,21 @@ export interface UniCloudApi {
   setMcpEnabled(input: { enabled: boolean }): Promise<McpRuntimeStatus>;
   /** Erzeugt ein neues Bearer-Token für den SSE-Endpunkt. */
   regenerateMcpToken(): Promise<McpRuntimeStatus>;
+
+  // --- Notion-Anbindung (Issue #27, Part 4) ---
+  /**
+   * Prüft ein Notion-Integration-Token (GET /users/me). Bei Erfolg wird das
+   * Token in der macOS Keychain abgelegt (nie an den Renderer zurückgegeben).
+   */
+  verifyNotionToken(input: { token: string }): Promise<{ ok: boolean; workspaceName?: string; message?: string }>;
+  /** Inkrementelle Suche nach Notion-Datenbanken (nutzt das gespeicherte Token). */
+  searchNotionDatabases(input: { query: string }): Promise<NotionDatabaseSummary[]>;
+  /** Liest den aktuellen Konfigurationsstand der Notion-Anbindung. */
+  getNotionConfig(): Promise<NotionConfigState>;
+  /** Hinterlegt die Ziel-Datenbank-ID (settings-Key `output.notion.lw_db_id`). */
+  setNotionDatabase(input: { databaseId: string }): Promise<void>;
+  /** Setzt den Ausgabe-Modus (settings-Key `output.adapter`). */
+  setNotionOutputMode(input: { mode: OutputAdapterMode }): Promise<void>;
 
   // --- Events ---
   /** Abonniert Live-Sync-Status; gibt eine Unsubscribe-Funktion zurück. */

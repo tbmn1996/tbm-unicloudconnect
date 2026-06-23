@@ -95,6 +95,13 @@ export function createDevApi(): UniCloudApi {
       configuredAt: new Date().toISOString(), lastCheckedAt: new Date().toISOString(),
     }),
 
+    // Notion-Anbindung (Vorschau-Mocks — im Browser-Dev-Modus keine echte Notion-Verbindung)
+    verifyNotionToken: async () => ({ ok: false, message: 'Notion ist im Vorschaumodus nicht verfügbar.' }),
+    searchNotionDatabases: async () => [],
+    getNotionConfig: async () => ({ connected: false, workspaceName: null, selectedDbId: null, adapterMode: 'filesystem' }),
+    setNotionDatabase: async () => undefined,
+    setNotionOutputMode: async () => undefined,
+
     onSyncStatus: (callback) => {
       listeners.add(callback);
       return () => listeners.delete(callback);

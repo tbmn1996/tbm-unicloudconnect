@@ -318,6 +318,40 @@ export interface AppSettings {
 }
 
 // ---------------------------------------------------------------------------
+// Notion-Anbindung — View-/IPC-Typen (Issue #27, Part 4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ausgabe-Modus (settings-Key `output.adapter`). Steuert, welche Adapter beim
+ * Sync laufen. `filesystem` (Default) = nur lokale Ablage; `notion`/`both`
+ * aktivieren zusätzlich den Notion-Push (siehe OutputRouter in src/output-adapters).
+ */
+export type OutputAdapterMode = 'filesystem' | 'notion' | 'both';
+
+/**
+ * Eine über die Notion-Such-API gefundene Datenbank, normalisiert für die UI.
+ * `title` ist bereits aus dem Rich-Text-Array zu einem String aufgelöst.
+ */
+export interface NotionDatabaseSummary {
+  id: string;
+  title: string;
+  icon?: string | null;
+  lastEdited?: string | null;
+}
+
+/** Aktueller Konfigurationsstand der Notion-Anbindung (für den Settings-Tab). */
+export interface NotionConfigState {
+  /** true, sobald ein Token in der Keychain hinterlegt ist. */
+  connected: boolean;
+  /** Name des Notion-Workspaces (aus der letzten erfolgreichen Verifikation), falls bekannt. */
+  workspaceName?: string | null;
+  /** Hinterlegte Ziel-Datenbank-ID (settings-Key `output.notion.lw_db_id`). */
+  selectedDbId?: string | null;
+  /** Aktueller Ausgabe-Modus; fehlt der Settings-Key, gilt `filesystem`. */
+  adapterMode: OutputAdapterMode;
+}
+
+// ---------------------------------------------------------------------------
 // Transkription — View-/IPC-Typen
 // ---------------------------------------------------------------------------
 

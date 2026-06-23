@@ -5,7 +5,8 @@ import { LearnwebClient } from '../learnweb-core/client';
 import { LearnwebAuthError } from '../learnweb-core/session';
 import { checkLibraryPath, createAndCheckLibraryPath } from '../local-library/access';
 import { IPC } from '../shared/ipc';
-import type { TranscriptionSettings, TranscriptionStatus } from '../shared/domain';
+import type { OutputAdapterMode, TranscriptionSettings, TranscriptionStatus } from '../shared/domain';
+import * as notionSetup from './notion-setup';
 
 export async function openLibraryFolderAction(runtime: AppRuntime): Promise<void> {
   const path = runtime.getLibraryPath();
@@ -125,6 +126,21 @@ export function registerIpcHandlers(runtime: AppRuntime): void {
   ipcMain.handle(IPC.setMcpEnabled, (_event, input: { enabled: boolean }) =>
     runtime.mcp.setEnabled(input?.enabled === true));
   ipcMain.handle(IPC.regenerateMcpToken, () => runtime.mcp.regenerateToken());
+
+  // --- Notion-Anbindung (Issue #27, Part 4) ---
+  // Das Token verlässt den Main-Prozess nie: Verify legt es in der Keychain ab,
+  // die übrigen Handler lesen es von dort. Der Renderer übergibt es nur einmalig.
+  ipcMain.handle(IPC.verifyNotionToken, (_event, input: { token: string }) =>
+    notionSetup.verifyAndStoreToken(input?.token, runtime.repos));
+  ipcMain.handle(IPC.searchNotionDatabases, (_event, input: { query: string }) =>
+    notionSetup.searchDatabases(input?.query, runtime.repos));
+  ipcMain.handle(IPC.getNotionConfig, () => notionSetup.getConfig(runtime.repos));
+  ipcMain.handle(IPC.setNotionDatabase, (_event, input: { databaseId: string }) => {
+    notionSetup.setDatabase(input?.databaseId, runtime.repos);
+  });
+  ipcMain.handle(IPC.setNotionOutputMode, (_event, input: { mode: OutputAdapterMode }) => {
+    notionSetup.setOutputMode(input?.mode, runtime.repos);
+  });
 }
 
 export function broadcastSyncStatus(status: unknown): void {
