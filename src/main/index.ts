@@ -1,7 +1,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow } from 'electron';
-import { broadcastSyncStatus, broadcastTranscriptionStatus, registerIpcHandlers } from './ipc';
+import { broadcastSyncStatus, broadcastTranscriptionStatus, openLibraryFolderAction, registerIpcHandlers } from './ipc';
 import { AppRuntime } from './runtime';
 import { StatusTray } from './tray';
 import { createMainWindow, markAppQuitting, showMainWindow } from './windows';
@@ -36,7 +36,11 @@ void app.whenReady().then(() => {
     },
   });
   registerIpcHandlers(runtime);
-  tray = new StatusTray(showMainWindow, () => runtime?.sync.start());
+  tray = new StatusTray(
+    showMainWindow,
+    () => runtime?.sync.start(),
+    () => { if (runtime) void openLibraryFolderAction(runtime).catch(() => undefined); },
+  );
   const state = runtime.getAppState();
   tray.setStatus(state.isSetupComplete
     ? runtime.sync.getStatus()

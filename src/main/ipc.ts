@@ -7,6 +7,13 @@ import { checkLibraryPath, createAndCheckLibraryPath } from '../local-library/ac
 import { IPC } from '../shared/ipc';
 import type { TranscriptionSettings, TranscriptionStatus } from '../shared/domain';
 
+export async function openLibraryFolderAction(runtime: AppRuntime): Promise<void> {
+  const path = runtime.getLibraryPath();
+  if (!path) throw new Error('Kein Bibliotheksordner konfiguriert.');
+  const error = await shell.openPath(path);
+  if (error) throw new Error('Bibliotheksordner konnte nicht geöffnet werden.');
+}
+
 export function registerIpcHandlers(runtime: AppRuntime): void {
   ipcMain.handle(IPC.getAppState, () => runtime.getAppState());
   ipcMain.handle(IPC.completeSetup, (_event, input: { displayName: string }) => {
@@ -53,12 +60,7 @@ export function registerIpcHandlers(runtime: AppRuntime): void {
     return result;
   });
   ipcMain.handle(IPC.getLibraryItems, () => runtime.repos.fileAssets.getAll());
-  ipcMain.handle(IPC.openLibraryFolder, async () => {
-    const path = runtime.getLibraryPath();
-    if (!path) throw new Error('Kein Bibliotheksordner konfiguriert.');
-    const error = await shell.openPath(path);
-    if (error) throw new Error('Bibliotheksordner konnte nicht geöffnet werden.');
-  });
+  ipcMain.handle(IPC.openLibraryFolder, () => openLibraryFolderAction(runtime));
 
   ipcMain.handle(IPC.refreshCourses, async () => {
     const client = new LearnwebClient(await runtime.getSession());

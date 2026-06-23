@@ -8,6 +8,7 @@ export class StatusTray {
   constructor(
     private readonly showWindow: () => void,
     private readonly startSync: () => void,
+    private readonly openLibraryFolder: () => void,
   ) {
     this.tray = new Tray(nativeImage.createEmpty());
     this.tray.setToolTip('TBM UniCloudConnect');
@@ -41,6 +42,7 @@ export class StatusTray {
           && this.status.state !== 'needs_setup',
         click: this.startSync,
       },
+      { label: 'Ordner öffnen', click: this.openLibraryFolder },
       { type: 'separator' },
       { label: 'Beenden', click: () => app.quit() },
     ]));
