@@ -2,6 +2,7 @@ import type { Repos } from '../db/repos';
 import type { LearnwebClient } from '../learnweb-core/client';
 import {
   LearnwebFileTooLargeError,
+  LearnwebTimeoutError,
   type LearnwebSession,
 } from '../learnweb-core/session';
 import { buildRelativeLibraryPath } from '../local-library/paths';
@@ -9,6 +10,9 @@ import { storeFile } from '../local-library/store';
 import type { ActivityStatus, Course, DownloadJob, SyncRun, SyncStatus } from '../shared/domain';
 
 type DownloadOutcome = Extract<ActivityStatus, 'downloaded' | 'deferred' | 'failed'>;
+
+/** Timeout pro Download-Aufruf (ms). Begrenzt hängende Downloads (Issue #19). */
+const DOWNLOAD_TIMEOUT_MS = 120_000;
 
 export interface SyncAccess {
   getClient(): Promise<LearnwebClient>;
@@ -72,17 +76,19 @@ export class SyncEngine {
           const targets = await client.resolveDownloadTargets(activity);
           if (targets.length === 0) continue;
           this.repos.activities.setStatus(activity.cmid, 'download_pending');
-          const outcomes: DownloadOutcome[] = [];
-          for (const target of targets) {
-            outcomes.push(await this.processDownload({
+          // Targets derselben Activity (z. B. Dateien in einem Ordner) parallel verarbeiten.
+          // Die echte Netzwerk-Parallelität wird bereits in downloadFile() durch den
+          // Semaphore (INTRA_CALL_CONCURRENCY = 3) begrenzt — hier ist kein eigener
+          // Limiter nötig (Issue #18).
+          const outcomes: DownloadOutcome[] = await Promise.all(targets.map((target) =>
+            this.processDownload({
               course,
               activity,
               target,
               libraryPath,
               session,
               counters,
-            }));
-          }
+            })));
           this.repos.activities.setStatus(activity.cmid, finalActivityStatus(outcomes));
         }
         this.setStatus({
@@ -128,7 +134,9 @@ export class SyncEngine {
     });
     this.setStatus({ ...this.status, activeJobs: this.status.activeJobs + 1 });
     try {
-      const download = await input.session.downloadFile(input.target.sourceUrl);
+      const download = await input.session.downloadFile(input.target.sourceUrl, {
+        timeoutMs: DOWNLOAD_TIMEOUT_MS,
+      });
       const relativePath = buildRelativeLibraryPath({
         semester: input.course.semester,
         courseName: input.course.fullname,
@@ -162,9 +170,14 @@ export class SyncEngine {
       return 'downloaded';
     } catch (error) {
       const tooLarge = error instanceof LearnwebFileTooLargeError;
+      const timedOut = !tooLarge && error instanceof LearnwebTimeoutError;
       this.updateJob(jobId, {
         status: tooLarge ? 'skipped_too_large' : 'failed_retryable',
-        errorMessage: tooLarge ? 'Datei überschreitet das Größenlimit.' : 'Download fehlgeschlagen.',
+        errorMessage: tooLarge
+          ? 'Datei überschreitet das Größenlimit.'
+          : timedOut
+            ? 'Zeitlimit beim Download überschritten.'
+            : 'Download fehlgeschlagen.',
         retryCount: tooLarge ? 0 : 1,
       });
       input.counters.warnings++;

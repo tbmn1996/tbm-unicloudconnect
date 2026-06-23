@@ -7,7 +7,11 @@ import { tmpdir } from 'node:os';
 import { openDatabase } from '../src/db/db';
 import { createRepos } from '../src/db/repos';
 import type { LearnwebClient } from '../src/learnweb-core/client';
-import { LearnwebFileTooLargeError, type LearnwebSession } from '../src/learnweb-core/session';
+import {
+  LearnwebFileTooLargeError,
+  LearnwebTimeoutError,
+  type LearnwebSession,
+} from '../src/learnweb-core/session';
 import type { Activity } from '../src/shared/domain';
 import { SyncEngine } from '../src/sync-engine/engine';
 
@@ -161,6 +165,101 @@ test('Sync-Engine persistiert deferred und failed für fehlgeschlagene Downloads
     assert.equal(repos.downloadJobs.getByStatus('skipped_too_large').length, 1);
     assert.equal(repos.downloadJobs.getByStatus('failed_retryable').length, 1);
     assert.equal(repos.syncRuns.getLast()?.status, 'warnings');
+  } finally {
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Mehrere Targets einer Activity werden parallel verarbeitet und korrekt aggregiert (Issue #18)', async () => {
+  const db = openDatabase(':memory:');
+  const root = await mkdtemp(join(tmpdir(), 'unicloud-sync-'));
+  try {
+    const repos = createRepos(db);
+    repos.courses.upsertMany([{ courseId: 7, fullname: 'Softwaretechnik' }]);
+    repos.courses.setSelected(7, true);
+    // Ein Ordner mit drei Dateien -> drei Download-Targets für dieselbe Activity.
+    const activity = { cmid: 11, courseId: 7, modtype: 'folder', name: 'Ordner', sectionName: null };
+    const targets = [
+      { activityCmid: 11, sourceUrl: 'https://learnweb.example/a.pdf', filename: 'a.pdf' },
+      { activityCmid: 11, sourceUrl: 'https://learnweb.example/b.pdf', filename: 'b.pdf' },
+      { activityCmid: 11, sourceUrl: 'https://learnweb.example/c.pdf', filename: 'c.pdf' },
+    ];
+    const fakeClient = {
+      listActivities: async () => [activity],
+      resolveDownloadTargets: async () => targets,
+    } as unknown as LearnwebClient;
+    // Künstlich unterschiedliche Auflösungszeiten, damit die Reihenfolge der
+    // Promise-Abschlüsse nicht der Reihenfolge der Targets entspricht.
+    const delays: Record<string, number> = {
+      'https://learnweb.example/a.pdf': 15,
+      'https://learnweb.example/b.pdf': 5,
+      'https://learnweb.example/c.pdf': 10,
+    };
+    const fakeSession = {
+      downloadFile: async (url: string) => new Promise((resolve) => {
+        setTimeout(() => {
+          const filename = url.split('/').pop() ?? 'datei.pdf';
+          resolve({
+            status: 200,
+            contentType: 'application/pdf',
+            filename,
+            bytes: Buffer.from(`Inhalt von ${filename}`),
+          });
+        }, delays[url] ?? 0);
+      }),
+    } as unknown as LearnwebSession;
+    const engine = new SyncEngine(repos, {
+      getClient: async () => fakeClient,
+      getSession: async () => fakeSession,
+      getLibraryPath: () => root,
+    });
+
+    await engine.run();
+
+    assert.equal(repos.fileAssets.getAll().length, 3);
+    assert.equal(repos.downloadJobs.getByStatus('done').length, 3);
+    assert.equal(repos.activities.getByCourse(7)[0]?.status, 'downloaded');
+    assert.equal(repos.syncRuns.getLast()?.status, 'success');
+  } finally {
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Timeout beim Download führt zu failed_retryable mit spezifischer Fehlermeldung (Issue #19)', async () => {
+  const db = openDatabase(':memory:');
+  const root = await mkdtemp(join(tmpdir(), 'unicloud-sync-'));
+  try {
+    const repos = createRepos(db);
+    repos.courses.upsertMany([{ courseId: 7, fullname: 'Softwaretechnik' }]);
+    repos.courses.setSelected(7, true);
+    const activity = { cmid: 11, courseId: 7, modtype: 'resource', name: 'Skript', sectionName: null };
+    const fakeClient = {
+      listActivities: async () => [activity],
+      resolveDownloadTargets: async () => [{
+        activityCmid: 11,
+        sourceUrl: 'https://learnweb.example/zeitlimit.pdf',
+        filename: 'zeitlimit.pdf',
+      }],
+    } as unknown as LearnwebClient;
+    const fakeSession = {
+      downloadFile: async () => {
+        throw new LearnwebTimeoutError();
+      },
+    } as unknown as LearnwebSession;
+    const engine = new SyncEngine(repos, {
+      getClient: async () => fakeClient,
+      getSession: async () => fakeSession,
+      getLibraryPath: () => root,
+    });
+
+    await engine.run();
+
+    const job = repos.downloadJobs.getByStatus('failed_retryable')[0];
+    assert.equal(job?.status, 'failed_retryable');
+    assert.match(job?.errorMessage ?? '', /Zeitlimit/);
+    assert.equal(repos.activities.getByCourse(7)[0]?.status, 'failed');
   } finally {
     db.close();
     await rm(root, { recursive: true, force: true });
