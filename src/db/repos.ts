@@ -272,7 +272,7 @@ export function makeFileAssetsRepo(db: AppDatabase) {
     sourceUrl: r.source_url as string,
     filenameOriginal: r.filename_original as string,
     filenameLocal: r.filename_local as string,
-    localPath: r.local_path as string,
+    localPath: (r.local_path as string | null) ?? null,
     sizeBytes: (r.size_bytes as number | null) ?? null,
     hash: (r.hash as string | null) ?? null,
     status: r.status as FileAsset['status'],
@@ -319,6 +319,10 @@ export function makeFileAssetsRepo(db: AppDatabase) {
     },
     findByHash(hash: string): FileAsset | null {
       const row = byHash.get(hash) as Record<string, unknown> | undefined;
+      return row ? map(row) : null;
+    },
+    findBySourceUrl(sourceUrl: string): FileAsset | null {
+      const row = bySourceUrl.get(sourceUrl) as Record<string, unknown> | undefined;
       return row ? map(row) : null;
     },
     /** Löscht alle Datei-Assets (Logout/Account-Wechsel). */

@@ -333,3 +333,229 @@ test('Sync-Engine schreibt output_refs, wenn der Output-Router einen Notion-Push
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('Sync-Engine läuft im exklusiven Notion-Modus ohne Bibliothekspfad und speichert nicht lokal', async () => {
+  const db = openDatabase(':memory:');
+  try {
+    const repos = createRepos(db);
+    repos.courses.upsertMany([{ courseId: 7, fullname: 'Softwaretechnik', semester: 'SoSe 2026' }]);
+    repos.courses.setSelected(7, true);
+
+    repos.settings.set('output.adapter', 'notion');
+    repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const activity = { cmid: 11, courseId: 7, modtype: 'resource', name: 'Skript', sectionName: 'Woche 1' };
+    const fakeClient = {
+      listActivities: async () => [activity],
+      resolveDownloadTargets: async () => [{
+        activityCmid: 11,
+        sourceUrl: 'https://learnweb.example/skript.pdf',
+        filename: 'skript.pdf',
+      }],
+    } as unknown as LearnwebClient;
+    const fakeSession = {
+      downloadFile: async () => ({
+        status: 200,
+        contentType: 'application/pdf',
+        filename: 'skript.pdf',
+        bytes: Buffer.from('PDF-Inhalt'),
+      }),
+    } as unknown as LearnwebSession;
+
+    let notionPlaceFileCalls = 0;
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => {
+        notionPlaceFileCalls++;
+        return {
+          adapter: 'notion',
+          duplicate: false,
+          remoteRef: 'notion-page-notion-only',
+          hash: 'hash-from-notion-only',
+          sizeBytes: 10,
+          filename: 'skript.pdf',
+        };
+      },
+      placeTranscript: async () => ({ adapter: 'notion' }),
+    };
+
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter('/tmp/nonexistent-library'), notion: fakeNotionAdapter },
+      repos.settings,
+    );
+
+    const engine = new SyncEngine(
+      repos,
+      {
+        getClient: async () => fakeClient,
+        getSession: async () => fakeSession,
+        getLibraryPath: () => null,
+      },
+      undefined,
+      async () => router,
+    );
+
+    await engine.run();
+    await engine.run();
+
+    // Idempotenz: zwei Syncs derselben Datei dürfen nur EINEN Notion-Push auslösen
+    // (sonst entsteht bei jedem Re-Sync eine doppelte Notion-Seite).
+    assert.equal(notionPlaceFileCalls, 1);
+
+    const assets = repos.fileAssets.getAll();
+    assert.equal(assets.length, 1);
+    const asset = assets[0]!;
+    assert.equal(asset.status, 'downloaded');
+    assert.equal(asset.localPath, null);
+    assert.equal(asset.hash, 'hash-from-notion-only');
+    assert.equal(asset.sizeBytes, 10);
+    assert.equal(asset.filenameLocal, 'skript.pdf');
+
+    const ref = repos.outputRefs.getBySource('file_asset', asset.id, 'db-xyz');
+    assert.equal(ref?.notionPageId, 'notion-page-notion-only');
+
+    const jobs = repos.downloadJobs.getByStatus('done');
+    assert.equal(jobs.length, 2);
+    assert.equal(jobs[0]?.localPath, null);
+    assert.equal(jobs[1]?.localPath, null);
+    assert.equal(repos.syncRuns.getLast()?.status, 'success');
+  } finally {
+    db.close();
+  }
+});
+
+test('Sync-Engine behandelt fehlgeschlagenen Datei-Notion-Push im notion-only-Modus als Warnung ohne lokale Persistenz', async () => {
+  const db = openDatabase(':memory:');
+  try {
+    const repos = createRepos(db);
+    repos.courses.upsertMany([{ courseId: 7, fullname: 'Softwaretechnik', semester: 'SoSe 2026' }]);
+    repos.courses.setSelected(7, true);
+    repos.settings.set('output.adapter', 'notion');
+    repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const activity = { cmid: 11, courseId: 7, modtype: 'resource', name: 'Skript', sectionName: 'Woche 1' };
+    const fakeClient = {
+      listActivities: async () => [activity],
+      resolveDownloadTargets: async () => [{
+        activityCmid: 11,
+        sourceUrl: 'https://learnweb.example/skript.pdf',
+        filename: 'skript.pdf',
+      }],
+    } as unknown as LearnwebClient;
+    const fakeSession = {
+      downloadFile: async () => ({
+        status: 200,
+        contentType: 'application/pdf',
+        filename: 'skript.pdf',
+        bytes: Buffer.from('PDF-Inhalt'),
+      }),
+    } as unknown as LearnwebSession;
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => { throw new Error('Notion API Timeout'); },
+      placeTranscript: async () => ({ adapter: 'notion' }),
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter('/tmp/nonexistent-library'), notion: fakeNotionAdapter },
+      repos.settings,
+    );
+    const engine = new SyncEngine(
+      repos,
+      { getClient: async () => fakeClient, getSession: async () => fakeSession, getLibraryPath: () => null },
+      undefined,
+      async () => router,
+    );
+
+    await engine.run();
+
+    const asset = repos.fileAssets.getAll()[0];
+    assert.equal(asset?.status, 'downloaded');
+    assert.ok(asset);
+    assert.equal(asset.localPath, null);
+    assert.equal(asset.hash, null);
+    assert.equal(repos.outputRefs.getBySource('file_asset', asset.id, 'db-xyz'), null);
+
+    const job = repos.downloadJobs.getByStatus('done')[0];
+    assert.ok(job);
+    assert.equal(job.localPath, null);
+    assert.equal(repos.syncRuns.getLast()?.status, 'warnings');
+  } finally {
+    db.close();
+  }
+});
+
+test('Sync-Engine im "both"-Modus: zweiter Sync derselben Datei schreibt lokal erneut, pusht aber nicht erneut zu Notion', async () => {
+  const db = openDatabase(':memory:');
+  const root = await mkdtemp(join(tmpdir(), 'unicloud-sync-'));
+  try {
+    const repos = createRepos(db);
+    repos.courses.upsertMany([{ courseId: 7, fullname: 'Softwaretechnik', semester: 'SoSe 2026' }]);
+    repos.courses.setSelected(7, true);
+    repos.settings.set('output.adapter', 'both');
+    repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const activity = { cmid: 11, courseId: 7, modtype: 'resource', name: 'Skript', sectionName: 'Woche 1' };
+    const fakeClient = {
+      listActivities: async () => [activity],
+      resolveDownloadTargets: async () => [{
+        activityCmid: 11,
+        sourceUrl: 'https://learnweb.example/skript.pdf',
+        filename: 'skript.pdf',
+      }],
+    } as unknown as LearnwebClient;
+    const fakeSession = {
+      downloadFile: async () => ({
+        status: 200,
+        contentType: 'application/pdf',
+        filename: 'skript.pdf',
+        bytes: Buffer.from('PDF-Inhalt'),
+      }),
+    } as unknown as LearnwebSession;
+
+    let notionPlaceFileCalls = 0;
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => {
+        notionPlaceFileCalls++;
+        return {
+          adapter: 'notion',
+          duplicate: false,
+          remoteRef: 'notion-page-both',
+          hash: 'hash-from-both',
+          sizeBytes: 10,
+          filename: 'skript.pdf',
+        };
+      },
+      placeTranscript: async () => ({ adapter: 'notion' }),
+    };
+
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(root), notion: fakeNotionAdapter },
+      repos.settings,
+    );
+
+    const engine = new SyncEngine(
+      repos,
+      { getClient: async () => fakeClient, getSession: async () => fakeSession, getLibraryPath: () => root },
+      undefined,
+      async () => router,
+    );
+
+    await engine.run();
+    await engine.run();
+
+    // Lokales Schreiben bleibt bei jedem Lauf aktiv (bestehendes Verhalten) ...
+    const assets = repos.fileAssets.getAll();
+    assert.equal(assets.length, 1);
+    const asset = assets[0]!;
+    assert.ok(asset.localPath);
+
+    // ... aber der Notion-Push darf nur beim ersten Lauf passieren.
+    assert.equal(notionPlaceFileCalls, 1);
+    const refs = repos.outputRefs.getBySource('file_asset', asset.id, 'db-xyz');
+    assert.equal(refs?.notionPageId, 'notion-page-both');
+  } finally {
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

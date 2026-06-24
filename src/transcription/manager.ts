@@ -397,6 +397,10 @@ export class TranscriptionManager {
         ? this.options.outputRouterFactory(libraryRoot)
         : this.buildDefaultRouter(libraryRoot));
       const markdown = await readFile(result.transcriptPath, 'utf-8');
+      const notionDatabaseId = this.options.repos.settings.get(OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY)
+        || this.options.repos.settings.get(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY);
+      const alreadyPushedToNotion = !!(notionDatabaseId
+        && this.options.repos.outputRefs.getBySource('transcript_job', job.id, notionDatabaseId));
       const placed = await router.placeTranscript({
         course: { courseId: course.courseId, fullname: course.fullname, semester: course.semester },
         title: job.title,
@@ -405,7 +409,7 @@ export class TranscriptionManager {
         durationSeconds: result.durationSeconds,
         markdown,
         alreadyWrittenLocalPath: result.transcriptPath,
-      });
+      }, { skipNotion: alreadyPushedToNotion });
       if (placed.warnings && placed.warnings.length > 0) {
         for (const warning of placed.warnings) {
           console.warn(`[transcription] Output-Router-Push Warnung für Job ${job.id}: ${warning}`);
@@ -415,8 +419,6 @@ export class TranscriptionManager {
       // 'ok' UND 'warnings' bedeuten: eine Seite wurde erstellt -> output_refs
       // erfassen (sonst Duplikate bei Retries). Nur 'failed' lässt sie aus.
       if (placed.notionStatus === 'ok' || placed.notionStatus === 'warnings') {
-        const notionDatabaseId = this.options.repos.settings.get(OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY)
-          || this.options.repos.settings.get(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY);
         if (notionDatabaseId && placed.notion?.remoteRef) {
           this.options.repos.outputRefs.insert({
             sourceEntityType: 'transcript_job',

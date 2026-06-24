@@ -53,6 +53,31 @@ const MIGRATIONS: Readonly<Partial<Record<number, (db: AppDatabase) => void>>> =
       ALTER TABLE transcript_jobs ADD COLUMN notion_push_error TEXT;
     `);
   },
+  5: (db) => {
+    db.exec(`
+      CREATE TABLE file_assets_dg_tmp (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        activity_cmid INTEGER REFERENCES activities(cmid) ON DELETE SET NULL,
+        course_id INTEGER NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
+        source_url TEXT NOT NULL,
+        filename_original TEXT NOT NULL,
+        filename_local TEXT NOT NULL,
+        local_path TEXT,
+        size_bytes INTEGER,
+        hash TEXT,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending','downloaded','skipped_duplicate','failed','removed')),
+        downloaded_at TEXT
+      );
+      INSERT INTO file_assets_dg_tmp (id, activity_cmid, course_id, source_url, filename_original, filename_local, local_path, size_bytes, hash, status, downloaded_at)
+      SELECT id, activity_cmid, course_id, source_url, filename_original, filename_local, local_path, size_bytes, hash, status, downloaded_at
+      FROM file_assets;
+      DROP TABLE file_assets;
+      ALTER TABLE file_assets_dg_tmp RENAME TO file_assets;
+      CREATE INDEX IF NOT EXISTS idx_file_assets_course ON file_assets(course_id);
+      CREATE INDEX IF NOT EXISTS idx_file_assets_hash ON file_assets(hash);
+    `);
+  },
 };
 
 /**

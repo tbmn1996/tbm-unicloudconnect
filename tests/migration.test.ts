@@ -1,11 +1,12 @@
 /**
- * Tests für Schema-Migration v1 → v4.
+ * Tests für Schema-Migration v1 → v5.
  *
  * Prüft:
  * - Neuinstallation legt direkt die aktuelle Version mit allen Spalten an
  * - Migration v1 → v2 via ALTER TABLE lädt die neuen Spalten + Index
  * - Migration v2 → v3 legt output_refs an
  * - Migration v3 → v4 lädt notion_push_status/notion_push_error (Notion-Push-Fix)
+ * - Migration v4 → v5 macht file_assets.local_path nullable
  * - claimNext() liefert aufeinanderfolgend verschiedene Job-IDs
  * - enqueueFromCandidate() ist idempotent (doppelt derselbe recording_key = nur ein Job)
  * - recoverInterrupted() setzt unterbrochene Jobs auf 'pending'
@@ -57,6 +58,24 @@ function createV1Database(path: string): Database.Database {
         CHECK (status IN ('discovered','selected','ignored','download_pending','downloaded','deferred','failed','removed')),
       last_seen_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS file_assets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      activity_cmid INTEGER REFERENCES activities(cmid) ON DELETE SET NULL,
+      course_id INTEGER NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
+      source_url TEXT NOT NULL,
+      filename_original TEXT NOT NULL,
+      filename_local TEXT NOT NULL,
+      local_path TEXT NOT NULL,
+      size_bytes INTEGER,
+      hash TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending','downloaded','skipped_duplicate','failed','removed')),
+      downloaded_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_file_assets_course ON file_assets(course_id);
+    CREATE INDEX IF NOT EXISTS idx_file_assets_hash ON file_assets(hash);
 
     -- v1-Schema: OHNE recording_key, title, source_type, media_url, needs_auth, sectionName, sectionIndex, recordingDate, retry_count
     CREATE TABLE IF NOT EXISTS transcript_jobs (
@@ -126,6 +145,20 @@ function createV3Database(path: string): Database.Database {
   return db;
 }
 
+/**
+ * Erstelle eine v4-Datenbank: erstelle v3 und wende die v4-Migrationsänderungen an,
+ * setze PRAGMA user_version = 4.
+ */
+function createV4Database(path: string): Database.Database {
+  const db = createV3Database(path);
+  db.exec(`
+    ALTER TABLE transcript_jobs ADD COLUMN notion_push_status TEXT CHECK (notion_push_status IN ('ok','warnings','failed','skipped'));
+    ALTER TABLE transcript_jobs ADD COLUMN notion_push_error TEXT;
+  `);
+  db.pragma('user_version = 4');
+  return db;
+}
+
 test('Migration v1→v2: simulierte v1-DB wird auf v2 gehoben', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
   const path = join(dir, 'state.sqlite');
@@ -164,13 +197,13 @@ test('Migration v1→v2: simulierte v1-DB wird auf v2 gehoben', () => {
   }
 });
 
-test('Neuinstallation legt direkt v4 mit allen Spalten an', () => {
+test('Neuinstallation legt direkt v5 mit allen Spalten an', () => {
   const db = openDatabase(':memory:');
   try {
     // Prüfe: user_version ist die aktuelle Schema-Version
     const version = db.pragma('user_version', { simple: true });
     assert.equal(version, SCHEMA_VERSION, `user_version sollte ${SCHEMA_VERSION} sein`);
-    assert.equal(SCHEMA_VERSION, 4);
+    assert.equal(SCHEMA_VERSION, 5);
 
     // Prüfe: alle v2-Spalten sind in der neu erstellten Tabelle vorhanden
     const tableInfo = db.prepare("PRAGMA table_info(transcript_jobs)").all() as Array<{ name: string }>;
@@ -209,7 +242,7 @@ test('Neuinstallation legt direkt v4 mit allen Spalten an', () => {
   }
 });
 
-test('Migration v2→v4: simulierte v2-DB nimmt v3 (output_refs) und v4 (notion_push) mit', () => {
+test('Migration v2→v5: simulierte v2-DB nimmt v3, v4 und v5 mit', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
   const path = join(dir, 'state.sqlite');
   const v2 = createV2Database(path);
@@ -240,7 +273,7 @@ test('Migration v2→v4: simulierte v2-DB nimmt v3 (output_refs) und v4 (notion_
     // Prüfe: user_version ist jetzt die aktuelle Schema-Version
     const versionAfter = db.pragma('user_version', { simple: true });
     assert.equal(versionAfter, SCHEMA_VERSION);
-    assert.equal(versionAfter, 4);
+    assert.equal(versionAfter, 5);
 
     // Prüfe: der UNIQUE INDEX existiert
     const indexes = db.prepare(
@@ -253,7 +286,7 @@ test('Migration v2→v4: simulierte v2-DB nimmt v3 (output_refs) und v4 (notion_
   }
 });
 
-test('Migration v3→v4: simulierte v3-DB wird auf v4 gehoben (Notion-Push-Fix)', () => {
+test('Migration v3→v5: simulierte v3-DB wird auf v5 gehoben', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
   const path = join(dir, 'state.sqlite');
   const v3 = createV3Database(path);
@@ -269,10 +302,60 @@ test('Migration v3→v4: simulierte v3-DB wird auf v4 gehoben (Notion-Push-Fix)'
     assert.ok(columnNames.includes('notion_push_status'), 'notion_push_status sollte vorhanden sein');
     assert.ok(columnNames.includes('notion_push_error'), 'notion_push_error sollte vorhanden sein');
 
-    // Prüfe: user_version ist jetzt 4
+    // Prüfe: user_version ist jetzt 5
     const versionAfter = db.pragma('user_version', { simple: true });
     assert.equal(versionAfter, SCHEMA_VERSION);
-    assert.equal(versionAfter, 4);
+    assert.equal(versionAfter, 5);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Migration v4→v5: local_path in file_assets wird nullable', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
+  const path = join(dir, 'state.sqlite');
+  const v4 = createV4Database(path);
+  assert.equal(v4.pragma('user_version', { simple: true }), 4);
+  v4.exec(`
+    INSERT INTO courses (course_id, fullname) VALUES (42, 'Testkurs');
+    INSERT INTO activities (cmid, course_id, modtype, name) VALUES (100, 42, 'resource', 'Skript');
+    INSERT INTO file_assets (
+      activity_cmid, course_id, source_url, filename_original, filename_local,
+      local_path, size_bytes, hash, status, downloaded_at
+    ) VALUES (
+      100, 42, 'https://example.invalid/file.pdf', 'file.pdf', 'file.pdf',
+      'Testkurs/file.pdf', 123, 'hash-before', 'downloaded', '2026-06-24T10:00:00.000Z'
+    );
+  `);
+  v4.close();
+
+  const db = openDatabase(path);
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(file_assets)").all() as Array<{ name: string; notnull: number }>;
+    const localPathCol = tableInfo.find((c) => c.name === 'local_path');
+    assert.ok(localPathCol);
+    assert.equal(localPathCol.notnull, 0, 'local_path sollte nullable sein');
+    db.prepare(`
+      INSERT INTO file_assets (
+        activity_cmid, course_id, source_url, filename_original, filename_local, local_path
+      ) VALUES (100, 42, 'https://example.invalid/notion-only.pdf', 'notion-only.pdf', 'notion-only.pdf', NULL)
+    `).run();
+
+    const rows = db.prepare('SELECT source_url, local_path, hash FROM file_assets ORDER BY id').all() as Array<{
+      source_url: string;
+      local_path: string | null;
+      hash: string | null;
+    }>;
+    assert.deepEqual(rows, [
+      { source_url: 'https://example.invalid/file.pdf', local_path: 'Testkurs/file.pdf', hash: 'hash-before' },
+      { source_url: 'https://example.invalid/notion-only.pdf', local_path: null, hash: null },
+    ]);
+
+    // Prüfe: user_version ist jetzt 5
+    const versionAfter = db.pragma('user_version', { simple: true });
+    assert.equal(versionAfter, SCHEMA_VERSION);
+    assert.equal(versionAfter, 5);
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });

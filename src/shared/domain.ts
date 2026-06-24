@@ -174,7 +174,7 @@ export interface FileAsset {
   sourceUrl: string;
   filenameOriginal: string;
   filenameLocal: string;
-  localPath: string;
+  localPath: string | null;
   sizeBytes: number | null;
   hash: string | null;
   status: FileAssetStatus;
@@ -328,8 +328,8 @@ export interface AppSettings {
 
 /**
  * Ausgabe-Modus (settings-Key `output.adapter`). Steuert, welche Adapter beim
- * Sync laufen. `filesystem` (Default) = nur lokale Ablage; `notion`/`both`
- * aktivieren zusätzlich den Notion-Push (siehe OutputRouter in src/output-adapters).
+ * Sync laufen. `filesystem` (Default) = nur lokale Ablage; `notion` = nur
+ * Notion ohne dauerhaften lokalen Pfad; `both` = lokale Ablage plus Notion.
  */
 export type OutputAdapterMode = 'filesystem' | 'notion' | 'both';
 

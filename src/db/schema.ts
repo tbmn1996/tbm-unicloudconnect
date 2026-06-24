@@ -12,7 +12,7 @@
  */
 
 /** Aktuelle Schema-Version; wird in PRAGMA user_version geschrieben. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = `
 -- profiles: Nutzerprofile (i. d. R. genau eines im MVP)
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS file_assets (
   source_url TEXT NOT NULL,
   filename_original TEXT NOT NULL,
   filename_local TEXT NOT NULL,
-  local_path TEXT NOT NULL,
+  local_path TEXT,
   size_bytes INTEGER,
   hash TEXT,
   status TEXT NOT NULL DEFAULT 'pending'
