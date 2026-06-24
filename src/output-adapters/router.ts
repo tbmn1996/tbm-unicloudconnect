@@ -12,17 +12,19 @@ import type {
  * Wählt anhand der Nutzereinstellung `output.adapter` aus, welche Targets
  * für einen `placeFile`/`placeTranscript`-Aufruf aktiv sind.
  *
- * Architektur-Entscheidung: Der Filesystem-Adapter läuft IMMER, unabhängig
- * vom konfigurierten Modus. Grund: `file_assets.local_path` ist `NOT NULL`
- * im Schema — ein "nur Notion"-Modus ohne lokalen Pfad ist damit nicht
- * abbildbar (das wäre eine Schema-Migration, kein Teil von Part 3). Der
- * Notion-Adapter läuft NUR zusätzlich, wenn konfiguriert — additiv, nie
- * ersetzend.
+ * `filesystem` schreibt nur lokal, `both` schreibt lokal und zusätzlich nach
+ * Notion, `notion` ist exklusiv und ruft den Filesystem-Adapter nicht auf.
+ * Im exklusiven Notion-Modus ist ein initialisierter Notion-Adapter Pflicht.
  *
  * Fehlerstrategie: Schlägt der Notion-Push fehl, scheitert der
- * Gesamtaufruf NICHT (kein Retry/Backfill in Part 3 — späterer Scope).
- * Der Fehler wird als String in `warnings[]` zurückgegeben, die lokale
- * Operation bleibt davon unberührt.
+ * Gesamtaufruf NICHT. Der Fehler wird als String in `warnings[]`
+ * zurückgegeben; aufrufende Schichten entscheiden, wie sie den fehlenden
+ * Remote-Persistenzanker bewerten.
+ *
+ * `skipNotion` (siehe `RouterCallOptions`) überspringt den Notion-Leg
+ * unabhängig vom Modus — auch die Adapter-Existenzprüfung entfällt dann.
+ * Aufrufer nutzen das, um bei bereits vorhandenem `output_ref` keinen
+ * doppelten Remote-Push (Notion `createPage`) auszulösen.
  */
 
 /** Schlanke Settings-Schnittstelle (Duck-Typing, kein voller Repos-Import nötig). */
@@ -39,7 +41,7 @@ export interface OutputRouterSettings {
 export type NotionPushStatus = 'ok' | 'warnings' | 'failed' | 'skipped';
 
 export interface RouterPlaceFileResult {
-  filesystem: PlaceFileResult;
+  filesystem?: PlaceFileResult;
   notion?: PlaceFileResult;
   warnings: string[];
   notionStatus: NotionPushStatus;
@@ -47,11 +49,19 @@ export interface RouterPlaceFileResult {
 }
 
 export interface RouterPlaceTranscriptResult {
-  filesystem: PlaceTranscriptResult;
+  filesystem?: PlaceTranscriptResult;
   notion?: PlaceTranscriptResult;
   warnings: string[];
   notionStatus: NotionPushStatus;
   notionError?: string;
+}
+
+type OutputRouterMode = 'filesystem' | 'notion' | 'both';
+
+/** Optionen für einzelne `placeFile`/`placeTranscript`-Aufrufe. */
+export interface RouterCallOptions {
+  /** Notion-Leg überspringen, z. B. weil bereits ein `output_ref` existiert. */
+  skipNotion?: boolean;
 }
 
 export class OutputRouter {
@@ -60,20 +70,24 @@ export class OutputRouter {
     private readonly settings: OutputRouterSettings,
   ) {}
 
-  private notionActive(): boolean {
-    const mode = this.settings.get('output.adapter');
-    return (mode === 'notion' || mode === 'both') && this.adapters.notion != null;
-  }
-
-  async placeFile(input: PlaceFileInput): Promise<RouterPlaceFileResult> {
-    const filesystem = await this.adapters.filesystem.placeFile(input);
+  async placeFile(input: PlaceFileInput, options?: RouterCallOptions): Promise<RouterPlaceFileResult> {
+    const mode = normalizeMode(this.settings.get('output.adapter'));
     const warnings: string[] = [];
+    let filesystem: PlaceFileResult | undefined;
     let notion: PlaceFileResult | undefined;
     let notionStatus: NotionPushStatus = 'skipped';
     let notionError: string | undefined;
-    if (this.notionActive()) {
+
+    if (mode === 'filesystem' || mode === 'both') {
+      filesystem = await this.adapters.filesystem.placeFile(input);
+    }
+
+    if (!options?.skipNotion && (mode === 'notion' || (mode === 'both' && this.adapters.notion))) {
+      if (!this.adapters.notion) {
+        throw new Error('Notion-Adapter ist nicht initialisiert/verfügbar.');
+      }
       try {
-        notion = await this.adapters.notion!.placeFile(input);
+        notion = await this.adapters.notion.placeFile(input);
         if (notion.warnings && notion.warnings.length > 0) {
           warnings.push(...notion.warnings);
           notionStatus = 'warnings';
@@ -86,18 +100,28 @@ export class OutputRouter {
         notionStatus = 'failed';
       }
     }
+
     return { filesystem, notion, warnings, notionStatus, ...(notionError !== undefined ? { notionError } : {}) };
   }
 
-  async placeTranscript(input: PlaceTranscriptInput): Promise<RouterPlaceTranscriptResult> {
-    const filesystem = await this.adapters.filesystem.placeTranscript(input);
+  async placeTranscript(input: PlaceTranscriptInput, options?: RouterCallOptions): Promise<RouterPlaceTranscriptResult> {
+    const mode = normalizeMode(this.settings.get('output.adapter'));
     const warnings: string[] = [];
+    let filesystem: PlaceTranscriptResult | undefined;
     let notion: PlaceTranscriptResult | undefined;
     let notionStatus: NotionPushStatus = 'skipped';
     let notionError: string | undefined;
-    if (this.notionActive()) {
+
+    if (mode === 'filesystem' || mode === 'both') {
+      filesystem = await this.adapters.filesystem.placeTranscript(input);
+    }
+
+    if (!options?.skipNotion && (mode === 'notion' || (mode === 'both' && this.adapters.notion))) {
+      if (!this.adapters.notion) {
+        throw new Error('Notion-Adapter ist nicht initialisiert/verfügbar.');
+      }
       try {
-        notion = await this.adapters.notion!.placeTranscript(input);
+        notion = await this.adapters.notion.placeTranscript(input);
         if (notion.warnings && notion.warnings.length > 0) {
           warnings.push(...notion.warnings);
           notionStatus = 'warnings';
@@ -110,6 +134,11 @@ export class OutputRouter {
         notionStatus = 'failed';
       }
     }
+
     return { filesystem, notion, warnings, notionStatus, ...(notionError !== undefined ? { notionError } : {}) };
   }
+}
+
+function normalizeMode(value: string | null): OutputRouterMode {
+  return value === 'notion' || value === 'both' ? value : 'filesystem';
 }

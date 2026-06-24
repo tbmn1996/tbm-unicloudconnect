@@ -272,7 +272,7 @@ export function makeFileAssetsRepo(db: AppDatabase) {
     sourceUrl: r.source_url as string,
     filenameOriginal: r.filename_original as string,
     filenameLocal: r.filename_local as string,
-    localPath: r.local_path as string,
+    localPath: (r.local_path as string | null) ?? null,
     sizeBytes: (r.size_bytes as number | null) ?? null,
     hash: (r.hash as string | null) ?? null,
     status: r.status as FileAsset['status'],
@@ -319,6 +319,10 @@ export function makeFileAssetsRepo(db: AppDatabase) {
     },
     findByHash(hash: string): FileAsset | null {
       const row = byHash.get(hash) as Record<string, unknown> | undefined;
+      return row ? map(row) : null;
+    },
+    findBySourceUrl(sourceUrl: string): FileAsset | null {
+      const row = bySourceUrl.get(sourceUrl) as Record<string, unknown> | undefined;
       return row ? map(row) : null;
     },
     /** Löscht alle Datei-Assets (Logout/Account-Wechsel). */
@@ -468,12 +472,14 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
     `UPDATE transcript_jobs SET status = @status, media_local_path = @mediaLocalPath,
        transcript_local_path = @transcriptLocalPath, model = @model,
        duration_seconds = @durationSeconds, error_code = @errorCode,
+       pending_local_path = @pendingLocalPath,
        updated_at = datetime('now') WHERE id = @id`,
   );
   const setStatus = db.prepare(
     `UPDATE transcript_jobs SET status = @status, media_local_path = @mediaLocalPath,
        transcript_local_path = @transcriptLocalPath, model = @model,
        duration_seconds = @durationSeconds, error_code = @errorCode,
+       pending_local_path = @pendingLocalPath,
        updated_at = datetime('now') WHERE id = @id`,
   );
   const incrementRetryStmt = db.prepare(
@@ -531,6 +537,7 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
     // Schema-v4-Felder (Spalten kommen mit MIGRATIONS[4]; bis dahin null).
     notionPushStatus: (r.notion_push_status as TranscriptJob['notionPushStatus']) ?? null,
     notionPushError: (r.notion_push_error as string | null) ?? null,
+    pendingLocalPath: (r.pending_local_path as string | null) ?? null,
   });
 
   return {
@@ -568,6 +575,7 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
         model: job.model,
         durationSeconds: job.durationSeconds,
         errorCode: job.errorCode,
+        pendingLocalPath: job.pendingLocalPath,
       });
     },
     /** Idempotentes Einreihen anhand recording_key (INSERT ... ON CONFLICT DO NOTHING). */
@@ -623,6 +631,7 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
         model: updated.model,
         durationSeconds: updated.durationSeconds,
         errorCode: updated.errorCode,
+        pendingLocalPath: updated.pendingLocalPath,
       });
     },
     /** Inkrementiere retry_count, gib neuen Wert zurück. */

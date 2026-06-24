@@ -1,16 +1,16 @@
-# Graph Report - tbm-unicloudconnect  (2026-06-22)
+# Graph Report - tbm-unicloudconnect  (2026-06-24)
 
 ## Corpus Check
-- 98 files · ~68,807 words
+- 119 files · ~93,029 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 888 nodes · 1541 edges · 62 communities (52 shown, 10 thin omitted)
+- 1050 nodes · 1955 edges · 68 communities (58 shown, 10 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 1 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b098270d`
+- Built from commit: `103c72b3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -35,7 +35,6 @@
 - [[_COMMUNITY_Community 17|Community 17]]
 - [[_COMMUNITY_Community 18|Community 18]]
 - [[_COMMUNITY_Community 19|Community 19]]
-- [[_COMMUNITY_Community 20|Community 20]]
 - [[_COMMUNITY_Community 21|Community 21]]
 - [[_COMMUNITY_Community 22|Community 22]]
 - [[_COMMUNITY_Community 23|Community 23]]
@@ -74,71 +73,77 @@
 - [[_COMMUNITY_Community 56|Community 56]]
 - [[_COMMUNITY_Community 57|Community 57]]
 - [[_COMMUNITY_Community 61|Community 61]]
+- [[_COMMUNITY_Community 62|Community 62]]
+- [[_COMMUNITY_Community 63|Community 63]]
+- [[_COMMUNITY_Community 64|Community 64]]
+- [[_COMMUNITY_Community 65|Community 65]]
+- [[_COMMUNITY_Community 66|Community 66]]
+- [[_COMMUNITY_Community 67|Community 67]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `LearnwebSession` - 34 edges
-2. `TranscriptionManager` - 22 edges
-3. `AppRuntime` - 20 edges
-4. `createRepos()` - 19 edges
-5. `process_request()` - 19 edges
+1. `LearnwebSession` - 35 edges
+2. `TranscriptionManager` - 27 edges
+3. `createRepos()` - 23 edges
+4. `AppRuntime` - 22 edges
+5. `process_request()` - 20 edges
 6. `normalizeText()` - 18 edges
-7. `LearnwebClient` - 16 edges
-8. `absoluteUrl()` - 15 edges
-9. `SyncStatus` - 15 edges
-10. `SyncEngine` - 15 edges
+7. `getPassword()` - 16 edges
+8. `LearnwebClient` - 16 edges
+9. `NotionClient` - 16 edges
+10. `SyncEngine` - 16 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `storeFile()` --calls--> `resolve()`  [INFERRED]
   src/local-library/store.ts → GUI Design/support.js
 - `seedDatabase()` --calls--> `openDatabase()`  [EXTRACTED]
   tests/mcp.test.ts → src/db/db.ts
-- `fixture()` --calls--> `createRepos()`  [EXTRACTED]
-  tests/transcription-manager.test.ts → src/db/repos.ts
+- `resolveNotionAdapter()` --calls--> `getPassword()`  [EXTRACTED]
+  tests/notion-push.it.test.ts → src/keychain/keychain.ts
 - `fixture()` --calls--> `openDatabase()`  [EXTRACTED]
   tests/transcription-manager.test.ts → src/db/db.ts
-- `AppRuntime` --references--> `Repos`  [EXTRACTED]
-  src/main/runtime.ts → src/db/repos.ts
+- `fixture()` --calls--> `openDatabase()`  [EXTRACTED]
+  tests/transcription-remove.test.ts → src/db/db.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (62 total, 10 thin omitted)
+## Communities (68 total, 10 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.08
-Nodes (41): DownloadTarget, escapeHtmlAttribute(), LearnwebResponse, absoluteUrl(), extractText(), normalizeText(), truncate(), extractSemester() (+33 more)
+Nodes (44): DownloadTarget, escapeHtmlAttribute(), LearnwebClient, absoluteUrl(), decodeHtmlEntities(), extractText(), normalizeText(), truncate() (+36 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.07
 Nodes (40): boot(), collectProps(), compileAttr(), compileTemplate(), createComponentFactory(), createExternalModules(), createHelmetManager(), createPseudoSheet() (+32 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.09
-Nodes (36): getDbPath(), openReadonlyDatabase(), ClaudeServerConfig, hasOwnClaudeConfig(), McpRuntimeOptions, readJsonObject(), updateClaudeConfig(), createMcpServer() (+28 more)
+Cohesion: 0.11
+Nodes (31): getDbPath(), openReadonlyDatabase(), createMcpServer(), listenWithRetry(), SseServerHandle, SseServerOptions, startSseServer(), startStdioServer() (+23 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.04
 Nodes (48): dependencies, axios, axios-cookiejar-support, better-sqlite3, cheerio, @modelcontextprotocol/sdk, tough-cookie, zod (+40 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.08
-Nodes (23): LearnwebAuthError, checkLibraryPath(), createAndCheckLibraryPath(), buildRelativeLibraryPath(), LibraryPathInput, sanitizePathSegment(), assertInsideRoot(), exists() (+15 more)
+Cohesion: 0.18
+Nodes (8): broadcastSyncStatus(), broadcastTranscriptionStatus(), openLibraryFolderAction(), registerIpcHandlers(), createMainWindow(), markAppQuitting(), showMainWindow(), toggleMainWindow()
 
 ### Community 5 - "Community 5"
-Cohesion: 0.11
-Nodes (17): assertSafeIdentifier(), assertSafePassword(), buildAddArgs(), buildDeleteArgs(), buildFindArgs(), deleteCredential(), execFileAsync, getPassword() (+9 more)
+Cohesion: 0.09
+Nodes (24): assertSafeIdentifier(), assertSafePassword(), buildAddArgs(), buildDeleteArgs(), buildFindArgs(), deleteCredential(), execFileAsync, getPassword() (+16 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.07
-Nodes (20): App(), Dashboard(), DashboardTab, dashboardTitle(), DEFAULT_TRANSCRIPTION_SETTINGS, EMPTY_MCP, EMPTY_SYNC, EMPTY_TRANSCRIPTION (+12 more)
+Cohesion: 0.09
+Nodes (13): Dashboard(), DashboardTab, dashboardTitle(), DEFAULT_TRANSCRIPTION_SETTINGS, EMPTY_MCP, EMPTY_SYNC, EMPTY_TRANSCRIPTION, formatDate() (+5 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.11
-Nodes (14): TranscriptionPhase, TranscriptionSettings, TranscriptionWorkerStatus, TranscriptJob, DEFAULT_SETTINGS, fileExists(), resolveMediaUrl(), runCommand() (+6 more)
+Cohesion: 0.10
+Nodes (16): sanitizePathSegment(), TranscriptionPhase, TranscriptionSettings, TranscriptJob, buildTranscriptPath(), DEFAULT_SETTINGS, fileExists(), moveToPendingTranscriptDir() (+8 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.18
-Nodes (6): extractFilenameFromContentDisposition(), isAxiosTimeoutError(), isRedirect(), LearnwebSession, normalizeHeaders(), stripQuotes()
+Cohesion: 0.11
+Nodes (13): decodeBodyBuffer(), DownloadFileResult, DownloadToPathResult, extractFilenameFromContentDisposition(), fixLatin1Mojibake(), isAxiosTimeoutError(), isRedirect(), LearnwebAuthError (+5 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.08
@@ -153,28 +158,28 @@ Cohesion: 0.09
 Nodes (22): 1. Motivation, 2. Design-Entscheidungen (fixiert), 3.1 Output-Pfad im Code, 3.2 Relevante Entitäten, 3.3 Transkripte in learnweb_sync (Referenz), 3. Ist-Zustand in MVP 1, 4.1 Adapter-Verantwortlichkeiten, 4.2 Adapter-Auswahl (+14 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.16
-Nodes (10): LearnwebClient, LearnwebFileTooLargeError, Activity, ActivityStatus, Course, DownloadJob, RecordingCandidate, SyncRun (+2 more)
+Cohesion: 0.12
+Nodes (18): buildRelativeLibraryPath(), LibraryPathInput, FilesystemAdapter, normalizeMode(), NotionPushStatus, OutputRouter, OutputRouterMode, OutputRouterSettings (+10 more)
 
 ### Community 13 - "Community 13"
-Cohesion: 0.19
-Nodes (4): StatusTray, SyncStatus, finalActivityStatus(), SyncEngine
+Cohesion: 0.17
+Nodes (5): Repos, StatusTray, McpRuntimeOptions, SyncStatus, SyncEngine
 
 ### Community 14 - "Community 14"
-Cohesion: 0.18
-Nodes (17): Any, detect_architecture(), emit_event(), get_transcription_backend(), get_youtube_subtitles(), main(), normalize_audio(), process_request() (+9 more)
+Cohesion: 0.24
+Nodes (13): Any, emit_event(), get_transcription_backend(), main(), normalize_audio(), process_request(), Lese Audio-/Videodatei mit PyAV ein und schreibe als 16 kHz Mono WAV.     Nutze, Transkribiere Audio mit Whisper-Backend.     Gibt (transcript, backend_label) zu (+5 more)
 
 ### Community 15 - "Community 15"
-Cohesion: 0.18
-Nodes (10): AppDatabase, getUserVersion(), initSchema(), MIGRATIONS, openDatabase(), runMigrations(), TranscriptJobStatus, EXPECTED_TABLES (+2 more)
+Cohesion: 0.09
+Nodes (28): AppDatabase, getUserVersion(), initSchema(), MIGRATIONS, openDatabase(), runMigrations(), createRepos(), makeActivitiesRepo() (+20 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.12
-Nodes (14): CredentialRef, DownloadJobStatus, FileAssetStatus, McpTransport, Profile, RecordingSourceKind, SelectionRule, SelectionScope (+6 more)
+Cohesion: 0.11
+Nodes (16): CredentialRef, DownloadJobStatus, FileAssetStatus, McpTransport, OutputRef, OutputRefSourceType, Profile, RecordingSourceKind (+8 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.22
-Nodes (12): createRepos(), makeActivitiesRepo(), makeCoursesRepo(), makeCredentialRefsRepo(), makeDownloadJobsRepo(), makeFileAssetsRepo(), makeMcpStatusRepo(), makeProfilesRepo() (+4 more)
+Nodes (13): appendLog(), getLogFilePath(), isElectronRuntime(), LogLevel, dateProperty(), extractPageId(), firstPageId(), NotionAdapter (+5 more)
 
 ### Community 18 - "Community 18"
 Cohesion: 0.12
@@ -183,10 +188,6 @@ Nodes (15): compilerOptions, composite, esModuleInterop, forceConsistentCasingIn
 ### Community 19 - "Community 19"
 Cohesion: 0.12
 Nodes (15): compilerOptions, composite, esModuleInterop, forceConsistentCasingInFileNames, jsx, lib, module, moduleResolution (+7 more)
-
-### Community 20 - "Community 20"
-Cohesion: 0.24
-Nodes (5): App-Modell & UI-Struktur, Architektur: TBM UniCloudConnect, Sicherheits- & Verwendungsprinzipien, Spezifikation: Model Context Protocol (MCP) Modul, Transports
 
 ### Community 21 - "Community 21"
 Cohesion: 0.18
@@ -197,8 +198,8 @@ Cohesion: 0.17
 Nodes (9): Umfassende Tests für den Transkriptions-Worker.  Teste Kern-Funktionen ohne echt, Test PyAV-basierte Audio-Normalisierung., PyAV sollte eine gültige 16 kHz Mono-WAV erzeugen., Test atomares Schreiben von Dateien., Test, dass keine Secrets/URLs/Cookies geloggt werden., Cookies sollten nicht in Events auftauchen., TestAtomicWrite, TestAudioNormalization (+1 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.21
-Nodes (7): YouTube-JSON3-Tracks werden ohne Metadaten in Text umgewandelt., Leere oder ungültige Inhalte sollten None zurückgeben., Wenn yt_dlp nicht verfügbar, sollte None zurückgegeben werden., Test YouTube-Untertitel-Verarbeitung., TestYouTubeSubtitles, _parse_subtitle_content(), Konvertiere VTT/SRT-Subtiteldaten in einfachen Text.     Gibt den Transkript-Str
+Cohesion: 0.19
+Nodes (9): YouTube-JSON3-Tracks werden ohne Metadaten in Text umgewandelt., Leere oder ungültige Inhalte sollten None zurückgeben., Wenn yt_dlp nicht verfügbar, sollte None zurückgegeben werden., Test YouTube-Untertitel-Verarbeitung., TestYouTubeSubtitles, get_youtube_subtitles(), _parse_subtitle_content(), Konvertiere VTT/SRT-Subtiteldaten in einfachen Text.     Gibt den Transkript-Str (+1 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.21
@@ -209,36 +210,36 @@ Cohesion: 0.21
 Nodes (8): Test mlx-whisper Modell-zu-Repo-Abbildung., Modell 'tiny' sollte auf tiny-mlx gemappt werden., Modell 'large-v3' sollte auf large-v3-mlx gemappt werden., Das offizielle Turbo-Repo trägt kein zusätzliches -mlx-Suffix., Unbekanntes Modell sollte auf small-mlx defaulten., TestMlxModelMapping, _map_model_to_mlx_repo(), Bilde Whisper-Modellnamen auf MLX-Community Hugging Face Repos ab.     Default:
 
 ### Community 26 - "Community 26"
-Cohesion: 0.20
-Nodes (7): Repos, DownloadFileResult, DownloadToPathResult, LearnwebTimeoutError, LearnwebUpstreamError, AppRuntimeOptions, TranscriptionStatus
+Cohesion: 0.18
+Nodes (9): App(), courses, createDevApi(), listeners, state, syncStatus, transcriptionListeners, container (+1 more)
 
 ### Community 27 - "Community 27"
 Cohesion: 0.24
 Nodes (8): Path, Test Path-Sicherheit gegen Directory-Traversal., Pfade sollten zu absoluten Pfaden aufgelöst werden., Directory-Traversal sollte durch resolve() verhindert werden., Atomes Schreiben sollte die Datei erzeugen., TestPathSecurity, Validiere output_path gegen Directory-Traversal.     Gibt absoluten Path zurück, validate_output_path()
 
 ### Community 28 - "Community 28"
-Cohesion: 0.25
-Nodes (7): api, Window, AppSettings, FileAsset, McpStatus, IPC, UniCloudApi
+Cohesion: 0.09
+Nodes (22): extractIcon(), extractPlainTitle(), extractWorkspaceName(), getConfig(), normalizeAdapterMode(), NotionClientLike, NotionSetupRepos, resolveDeps() (+14 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.20
-Nodes (10): Abschluss, Arbeitsregeln, Befehle, graphify, Guardrails (MVP 1), Sicherheit und Zugriffe, Stack, TBM UniCloudConnect - Agentenanleitung (+2 more)
+Cohesion: 0.25
+Nodes (11): checkLibraryPath(), createAndCheckLibraryPath(), assertInsideRoot(), exists(), hasHash(), isInsideRoot(), resultFor(), sha256() (+3 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.20
-Nodes (10): 1. `learnweb-get-courses`, 2. `learnweb-get-course-overview`, 3. `learnweb-read-activity`, 4. `learnweb-read-quiz-review`, 5. `learnweb-get-timeline`, 6. `learnweb-search-courses`, 7. `learnweb-get-page`, 8. `learnweb-get-calendar-month` (+2 more)
+Cohesion: 0.15
+Nodes (13): 1. `learnweb-get-courses`, 2. `learnweb-get-course-overview`, 3. `learnweb-read-activity`, 4. `learnweb-read-quiz-review`, 5. `learnweb-get-timeline`, 6. `learnweb-search-courses`, 7. `learnweb-get-page`, 8. `learnweb-get-calendar-month` (+5 more)
 
 ### Community 31 - "Community 31"
 Cohesion: 0.20
 Nodes (9): 1. Setup-Wizard (8 Schritte laut SETUP_FLOW.md), 2. MCP-Tools (9 read-only Tools laut MCP_SPEC.md), 3. Sync-Engine (`src/sync-engine/`), 4. Local-Library (`src/local-library/`), 5. Tray/Statusbar (`src/main/tray.ts`), 6. SQLite-Schema (`src/db/schema.ts` gegen ARCHITECTURE.md), 7. Transkription (`src/transcription/`, `transcription-worker/`), MVP1-Lücken-Report (+1 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.20
-Nodes (10): Abschluss, Arbeitsregeln, Befehle, graphify, Guardrails (MVP 1), Sicherheit und Zugriffe, Stack, TBM UniCloudConnect - Agentenanleitung (+2 more)
+Cohesion: 0.18
+Nodes (11): Abschluss, Arbeitsregeln, Befehle, graphify, Guardrails (MVP 1), Live-Tests & Builds (verbindlich), Sicherheit und Zugriffe, Stack (+3 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.20
-Nodes (6): Test Request-Verarbeitung auf höherer Ebene., Request ohne output_path sollte Error-Event zurückgeben., YouTube ohne Untertitel sollte media_url benötigen., YouTube mit verfügbaren Untertiteln sollte erfolgreich sein., Requests mit Exceptions sollten Error-Events zurückgeben., TestProcessRequest
+Cohesion: 0.17
+Nodes (7): Test Request-Verarbeitung auf höherer Ebene., Request ohne output_path sollte Error-Event zurückgeben., YouTube ohne Untertitel sollte media_url benötigen., YouTube mit verfügbaren Untertiteln sollte erfolgreich sein., Requests mit Exceptions sollten Error-Events zurückgeben., Regressionstest für Issue #14/#16: Opencast-Jobs mit Auth liefern         media_, TestProcessRequest
 
 ### Community 34 - "Community 34"
 Cohesion: 0.24
@@ -249,27 +250,27 @@ Cohesion: 0.22
 Nodes (8): graphify reference: extra exports and benchmark, Step 6b - Wiki (only if --wiki flag), Step 7 - Neo4j export (only if --neo4j or --neo4j-push flag), Step 7a - FalkorDB export (only if --falkordb or --falkordb-push flag), Step 7b - SVG export (only if --svg flag), Step 7c - GraphML export (only if --graphml flag), Step 7d - MCP server (only if --mcp flag), Step 8 - Token reduction benchmark (only if total_words > 5000)
 
 ### Community 36 - "Community 36"
-Cohesion: 0.22
-Nodes (8): Abschluss, Arbeitsregeln, Befehle, Sicherheit und Zugriffe, Stack, transcription-worker - Agentenanleitung, Vor dem Arbeiten, Zweck
+Cohesion: 0.17
+Nodes (11): 1. Generierung der macOS-Icons (.icns & Tray Templates), 2. Statusbar (Tray) Code-Implementierung, 3. Frontend-Integration (React Dashboard), 4. Build-Konfiguration aktualisieren, 🎯 Akzeptanzkriterien, 📋 Arbeitspakete (Subtasks), Epic: TBM Cloud Logo und Branding in der App & Statusleiste integrieren, Script zur Erstellung des `.icns`-Ordners (macOS native) (+3 more)
 
 ### Community 37 - "Community 37"
-Cohesion: 0.25
-Nodes (8): `activities` (Kurs-Aktivitäten), `courses` (LearnWeb-Kurse), `credential_refs` (Verweis auf Keychain), `file_assets` (Lokale Dateien), Lokales Domänenmodell (SQLite Schema), `profiles` (Nutzerprofile), `sync_runs` (Synchronisationsverlauf), `transcript_jobs` (Transkriptionsaufträge)
+Cohesion: 0.12
+Nodes (17): 1. macOS App Shell, 2. LearnWeb Core, 3. Sync Engine, 4. Local Library, 5. Transcription Worker, 6. MCP-Modul, `activities` (Kurs-Aktivitäten), App-Modell & UI-Struktur (+9 more)
 
 ### Community 38 - "Community 38"
-Cohesion: 0.29
+Cohesion: 0.33
 Nodes (6): 1. Kontext (Context), 2. Entscheidung (Decision), 3. Konsequenzen (Consequences), ADR 0001: macOS-only, Local-first und Notion-Ausschluss für MVP 1, Negative Konsequenzen:, Positive Konsequenzen:
 
 ### Community 39 - "Community 39"
-Cohesion: 0.29
-Nodes (7): 1. macOS App Shell, 2. LearnWeb Core, 3. Sync Engine, 4. Local Library, 5. Transcription Worker, 6. MCP-Modul, Modul-Zuständigkeiten
+Cohesion: 0.17
+Nodes (11): 1. `electron-builder` Konfiguration erstellen, 2. DMG-Hintergrundbild (Tutorial) entwerfen, 3. Build-Skripte in `package.json` erweitern, 4. Kompatibilitätstests (Universal / ARM64 / x64), 🎯 Akzeptanzkriterien, 📋 Arbeitspakete (Subtasks), 📘 Dokumentation für den Nutzer (README.md / Downloadseite), Epic: Unsigniertes macOS-Packaging (DMG) für Laien einrichten (+3 more)
 
 ### Community 40 - "Community 40"
 Cohesion: 0.29
 Nodes (7): 1. Zustände für Kursaktivitäten (`activities.status`), 2. Zustände für Download-Jobs (`download_jobs.status`), 3. Zustände für Transkriptionen (`transcript_jobs.status`), Scope-Abgrenzung, Scope: TBM UniCloudConnect MVP 1, Statusübergänge & Definitionen, Transkriptionsspezifikationen
 
 ### Community 41 - "Community 41"
-Cohesion: 0.29
+Cohesion: 0.25
 Nodes (7): Befehle, Features, JSONL-Protokoll, Stack, Tests, transcription-worker, Zugriffe
 
 ### Community 42 - "Community 42"
@@ -281,8 +282,8 @@ Cohesion: 0.33
 Nodes (5): For /graphify explain, For /graphify path, graphify reference: query, path, explain, Step 0 — Constrained query expansion (REQUIRED before traversal), Step 1 — Traversal
 
 ### Community 44 - "Community 44"
-Cohesion: 0.33
-Nodes (4): Test Architektur-Erkennung., Architektur sollte entweder 'arm64' oder 'x86_64' sein., Architektur sollte platform.machine() entsprechen., TestArchitectureDetection
+Cohesion: 0.29
+Nodes (6): Test Architektur-Erkennung., Architektur sollte entweder 'arm64' oder 'x86_64' sein., Architektur sollte platform.machine() entsprechen., TestArchitectureDetection, detect_architecture(), Erkenne Architektur: 'arm64' (Apple Silicon) oder 'x86_64' (Intel).     Gibt den
 
 ### Community 45 - "Community 45"
 Cohesion: 0.40
@@ -300,8 +301,32 @@ Nodes (3): For git commit hook, For native CLAUDE.md integration, graphify refer
 Cohesion: 0.50
 Nodes (3): For --cluster-only, For --update (incremental re-extraction), graphify reference: incremental update and cluster-only
 
+### Community 62 - "Community 62"
+Cohesion: 0.22
+Nodes (8): Abschluss, Arbeitsregeln, Befehle, Sicherheit und Zugriffe, Stack, transcription-worker - Agentenanleitung, Vor dem Arbeiten, Zweck
+
+### Community 63 - "Community 63"
+Cohesion: 0.29
+Nodes (7): 1. Kontext (Context), 2. Entscheidung (Decision), 3. Konsequenzen (Consequences), 4. Folgeschritte (nicht Teil dieser ADR), ADR 0002: Aufhebung des Notion-Ausschlusses — Notion-Output-Adapter für MVP 2, Negative Konsequenzen / Risiken:, Positive Konsequenzen:
+
+### Community 64 - "Community 64"
+Cohesion: 0.18
+Nodes (11): api, Window, AppSettings, FileAsset, LibraryPathCheck, McpStatus, OutputAdapterMode, TranscriptionStatus (+3 more)
+
+### Community 65 - "Community 65"
+Cohesion: 0.18
+Nodes (8): LearnwebFileTooLargeError, LearnwebTimeoutError, ActivityStatus, DownloadJob, SyncRun, DownloadOutcome, finalActivityStatus(), SyncAccess
+
+### Community 66 - "Community 66"
+Cohesion: 0.29
+Nodes (4): EMPTY_CONFIG, NotionSettingsPanel(), NotionConfigState, NotionDatabaseSummary
+
+### Community 67 - "Community 67"
+Cohesion: 0.40
+Nodes (3): createNotionAdapter(), course, DEFAULT_SCHEMA
+
 ## Knowledge Gaps
-- **286 isolated node(s):** `name`, `version`, `private`, `type`, `description` (+281 more)
+- **311 isolated node(s):** `name`, `version`, `private`, `type`, `description` (+306 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -309,16 +334,16 @@ Nodes (3): For --cluster-only, For --update (incremental re-extraction), graphif
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Path` connect `Community 27` to `Community 33`, `Community 2`, `Community 22`, `Community 14`?**
-  _High betweenness centrality (0.135) - this node is a cross-community bridge._
-- **Why does `process_request()` connect `Community 14` to `Community 33`, `Community 34`, `Community 21`, `Community 22`, `Community 24`, `Community 27`?**
-  _High betweenness centrality (0.087) - this node is a cross-community bridge._
-- **Why does `storeFile()` connect `Community 4` to `Community 1`, `Community 12`, `Community 13`?**
-  _High betweenness centrality (0.075) - this node is a cross-community bridge._
+  _High betweenness centrality (0.124) - this node is a cross-community bridge._
+- **Why does `process_request()` connect `Community 14` to `Community 33`, `Community 34`, `Community 44`, `Community 21`, `Community 22`, `Community 23`, `Community 24`, `Community 27`?**
+  _High betweenness centrality (0.077) - this node is a cross-community bridge._
+- **Why does `storeFile()` connect `Community 29` to `Community 65`, `Community 1`, `Community 12`, `Community 13`?**
+  _High betweenness centrality (0.054) - this node is a cross-community bridge._
 - **What connects `name`, `version`, `private` to the rest of the system?**
-  _343 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _369 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.08408953418027829 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07824513794663049 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
   _Cohesion score 0.06918238993710692 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
-  _Cohesion score 0.08748114630467571 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.10676532769556026 - nodes in this community are weakly interconnected._

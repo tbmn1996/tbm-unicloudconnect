@@ -13,7 +13,7 @@ import type {
 /** Baut einen minimalen, aber vertragskonformen PlaceFileInput für Tests. */
 function makeFileInput(): PlaceFileInput {
   return {
-    course: { courseId: 1, fullname: 'Testkurs', semester: 'SoSe26' },
+    course: { courseId: 1, fullname: 'Testkurs', semester: 'SoSe26', courseUrl: null },
     sectionName: 'Vorlesungen',
     filename: 'folie.pdf',
     bytes: new Uint8Array([1, 2, 3]),
@@ -23,7 +23,7 @@ function makeFileInput(): PlaceFileInput {
 /** Baut einen minimalen, aber vertragskonformen PlaceTranscriptInput für Tests. */
 function makeTranscriptInput(): PlaceTranscriptInput {
   return {
-    course: { courseId: 1, fullname: 'Testkurs', semester: 'SoSe26' },
+    course: { courseId: 1, fullname: 'Testkurs', semester: 'SoSe26', courseUrl: null },
     title: 'Vorlesung 1',
     recordingDate: '2026-06-01',
     model: 'whisper',
@@ -93,6 +93,7 @@ test('placeFile: settings.get liefert null -> nur Filesystem-Adapter läuft, not
   assert.equal(notion.placeFileCalls.length, 0);
   assert.equal(result.notion, undefined);
   assert.deepEqual(result.warnings, []);
+  assert.ok(result.filesystem);
   assert.equal(result.filesystem.adapter, 'filesystem');
   assert.equal(result.notionStatus, 'skipped');
   assert.equal(result.notionError, undefined);
@@ -112,15 +113,29 @@ test('placeFile: settings.get liefert "filesystem" -> identisch zum null-Fall', 
   assert.equal(result.notionStatus, 'skipped');
 });
 
-test('placeFile: settings.get liefert "notion" -> beide Adapter laufen (Filesystem trotzdem Pflicht), notion-Ergebnis vorhanden', async () => {
+test('placeFile: unbekannter settings-Wert fällt auf Filesystem zurück', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const notion = makeFakeTarget('notion');
+  const router = new OutputRouter({ filesystem, notion }, makeSettings('kaputt'));
+
+  const result = await router.placeFile(makeFileInput());
+
+  assert.equal(filesystem.placeFileCalls.length, 1);
+  assert.equal(notion.placeFileCalls.length, 0);
+  assert.equal(result.filesystem?.adapter, 'filesystem');
+  assert.equal(result.notionStatus, 'skipped');
+});
+
+test('placeFile: settings.get liefert "notion" -> nur Notion-Adapter läuft, filesystem ist undefined', async () => {
   const filesystem = makeFakeTarget('filesystem');
   const notion = makeFakeTarget('notion');
   const router = new OutputRouter({ filesystem, notion }, makeSettings('notion'));
 
   const result = await router.placeFile(makeFileInput());
 
-  assert.equal(filesystem.placeFileCalls.length, 1);
+  assert.equal(filesystem.placeFileCalls.length, 0);
   assert.equal(notion.placeFileCalls.length, 1);
+  assert.equal(result.filesystem, undefined);
   assert.ok(result.notion);
   assert.equal(result.notion?.adapter, 'notion');
   assert.deepEqual(result.warnings, []);
@@ -163,6 +178,7 @@ test('placeFile: "both" mit Notion-Adapter-Error -> filesystem-Ergebnis bleibt k
 
   const result = await router.placeFile(makeFileInput());
 
+  assert.ok(result.filesystem);
   assert.equal(result.filesystem.adapter, 'filesystem');
   assert.equal(result.filesystem.relativePath, 'kurs/folie.pdf');
   assert.equal(result.notion, undefined);
@@ -172,15 +188,67 @@ test('placeFile: "both" mit Notion-Adapter-Error -> filesystem-Ergebnis bleibt k
   assert.equal(result.notionError, 'API down');
 });
 
-test('placeFile: "both" aber adapters.notion ist undefined -> kein Crash, Notion-Leg übersprungen, keine warnings', async () => {
+test('placeFile: "notion" aber adapters.notion ist undefined -> wirft Error', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const router = new OutputRouter({ filesystem, notion: undefined }, makeSettings('notion'));
+
+  await assert.rejects(async () => {
+    await router.placeFile(makeFileInput());
+  }, /Notion-Adapter ist nicht initialisiert/);
+});
+
+test('placeFile: "both" aber adapters.notion ist undefined -> Filesystem läuft, Notion wird übersprungen', async () => {
   const filesystem = makeFakeTarget('filesystem');
   const router = new OutputRouter({ filesystem, notion: undefined }, makeSettings('both'));
 
   const result = await router.placeFile(makeFileInput());
 
   assert.equal(filesystem.placeFileCalls.length, 1);
+  assert.equal(result.filesystem?.adapter, 'filesystem');
   assert.equal(result.notion, undefined);
   assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'skipped');
+});
+
+test('placeFile: "notion" mit skipNotion:true -> Notion-Adapter wird nicht aufgerufen, notionStatus="skipped"', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const notion = makeFakeTarget('notion');
+  const router = new OutputRouter({ filesystem, notion }, makeSettings('notion'));
+
+  const result = await router.placeFile(makeFileInput(), { skipNotion: true });
+
+  assert.equal(filesystem.placeFileCalls.length, 0);
+  assert.equal(notion.placeFileCalls.length, 0);
+  assert.equal(result.filesystem, undefined);
+  assert.equal(result.notion, undefined);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'skipped');
+});
+
+test('placeFile: "both" mit skipNotion:true -> Filesystem läuft trotzdem, Notion wird übersprungen', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const notion = makeFakeTarget('notion');
+  const router = new OutputRouter({ filesystem, notion }, makeSettings('both'));
+
+  const result = await router.placeFile(makeFileInput(), { skipNotion: true });
+
+  assert.equal(filesystem.placeFileCalls.length, 1);
+  assert.equal(notion.placeFileCalls.length, 0);
+  assert.equal(result.filesystem?.adapter, 'filesystem');
+  assert.equal(result.notion, undefined);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'skipped');
+});
+
+test('placeFile: "notion" mit skipNotion:true und adapters.notion ist undefined -> wirft NICHT', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const router = new OutputRouter({ filesystem, notion: undefined }, makeSettings('notion'));
+
+  const result = await router.placeFile(makeFileInput(), { skipNotion: true });
+
+  assert.equal(filesystem.placeFileCalls.length, 0);
+  assert.equal(result.filesystem, undefined);
+  assert.equal(result.notion, undefined);
   assert.equal(result.notionStatus, 'skipped');
 });
 
@@ -198,6 +266,21 @@ test('placeTranscript: settings.get liefert null -> nur Filesystem-Adapter läuf
   assert.equal(result.notion, undefined);
   assert.deepEqual(result.warnings, []);
   assert.equal(result.notionStatus, 'skipped');
+});
+
+test('placeTranscript: settings.get liefert "notion" -> nur Notion-Adapter läuft, filesystem ist undefined', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const notion = makeFakeTarget('notion');
+  const router = new OutputRouter({ filesystem, notion }, makeSettings('notion'));
+
+  const result = await router.placeTranscript(makeTranscriptInput());
+
+  assert.equal(filesystem.placeTranscriptCalls.length, 0);
+  assert.equal(notion.placeTranscriptCalls.length, 1);
+  assert.equal(result.filesystem, undefined);
+  assert.ok(result.notion);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'ok');
 });
 
 test('placeTranscript: settings.get liefert "both" -> beide Adapter laufen, beide Ergebnisse vorhanden', async () => {
@@ -240,6 +323,7 @@ test('placeTranscript: "both" mit Notion-Adapter-Error -> filesystem-Ergebnis bl
 
   const result = await router.placeTranscript(makeTranscriptInput());
 
+  assert.ok(result.filesystem);
   assert.equal(result.filesystem.adapter, 'filesystem');
   assert.equal(result.filesystem.relativePath, 'kurs/transkript.md');
   assert.equal(result.notion, undefined);
@@ -247,4 +331,68 @@ test('placeTranscript: "both" mit Notion-Adapter-Error -> filesystem-Ergebnis bl
   assert.equal(result.warnings[0], 'Notion-Push fehlgeschlagen: Timeout');
   assert.equal(result.notionStatus, 'failed');
   assert.equal(result.notionError, 'Timeout');
+});
+
+test('placeTranscript: "notion" aber adapters.notion ist undefined -> wirft Error', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const router = new OutputRouter({ filesystem, notion: undefined }, makeSettings('notion'));
+
+  await assert.rejects(async () => {
+    await router.placeTranscript(makeTranscriptInput());
+  }, /Notion-Adapter ist nicht initialisiert/);
+});
+
+test('placeTranscript: "both" aber adapters.notion ist undefined -> Filesystem läuft, Notion wird übersprungen', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const router = new OutputRouter({ filesystem, notion: undefined }, makeSettings('both'));
+
+  const result = await router.placeTranscript(makeTranscriptInput());
+
+  assert.equal(filesystem.placeTranscriptCalls.length, 1);
+  assert.equal(result.filesystem?.adapter, 'filesystem');
+  assert.equal(result.notion, undefined);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'skipped');
+});
+
+test('placeTranscript: "notion" mit skipNotion:true -> Notion-Adapter wird nicht aufgerufen, notionStatus="skipped"', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const notion = makeFakeTarget('notion');
+  const router = new OutputRouter({ filesystem, notion }, makeSettings('notion'));
+
+  const result = await router.placeTranscript(makeTranscriptInput(), { skipNotion: true });
+
+  assert.equal(filesystem.placeTranscriptCalls.length, 0);
+  assert.equal(notion.placeTranscriptCalls.length, 0);
+  assert.equal(result.filesystem, undefined);
+  assert.equal(result.notion, undefined);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'skipped');
+});
+
+test('placeTranscript: "both" mit skipNotion:true -> Filesystem läuft trotzdem, Notion wird übersprungen', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const notion = makeFakeTarget('notion');
+  const router = new OutputRouter({ filesystem, notion }, makeSettings('both'));
+
+  const result = await router.placeTranscript(makeTranscriptInput(), { skipNotion: true });
+
+  assert.equal(filesystem.placeTranscriptCalls.length, 1);
+  assert.equal(notion.placeTranscriptCalls.length, 0);
+  assert.equal(result.filesystem?.adapter, 'filesystem');
+  assert.equal(result.notion, undefined);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'skipped');
+});
+
+test('placeTranscript: "notion" mit skipNotion:true und adapters.notion ist undefined -> wirft NICHT', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const router = new OutputRouter({ filesystem, notion: undefined }, makeSettings('notion'));
+
+  const result = await router.placeTranscript(makeTranscriptInput(), { skipNotion: true });
+
+  assert.equal(filesystem.placeTranscriptCalls.length, 0);
+  assert.equal(result.filesystem, undefined);
+  assert.equal(result.notion, undefined);
+  assert.equal(result.notionStatus, 'skipped');
 });

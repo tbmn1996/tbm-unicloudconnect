@@ -49,10 +49,20 @@ function numberProperty(value: number | null) {
   return { number: value };
 }
 
+/** Notion-Property-Value für eine URL-Property. */
+function urlProperty(url: string) {
+  return { url };
+}
+
 /** Liest das `id`-Feld einer createPage-Response vorsichtig als string aus. */
 function extractPageId(response: Record<string, unknown>): string {
   const id = response.id;
   return typeof id === 'string' ? id : '';
+}
+
+function firstPageId(response: Record<string, unknown>): string | null {
+  const page = ((response as { results?: unknown[] }).results || [])[0] as Record<string, unknown> | undefined;
+  return typeof page?.id === 'string' ? page.id : null;
 }
 
 /**
@@ -116,11 +126,6 @@ export class NotionAdapter implements OutputTarget {
     return 'Name';
   }
 
-  private async getTitlePropertyName(databaseId: string): Promise<string> {
-    const { schema } = await this.resolveSchema(databaseId);
-    return this.titleFromSchema(schema);
-  }
-
   /**
    * Filtert `desired` gegen das tatsächliche Schema der Ziel-DB. Properties,
    * die dort nicht existieren, werden entfernt (Notion lehnt sonst den
@@ -159,34 +164,37 @@ export class NotionAdapter implements OutputTarget {
     return { properties, warnings };
   }
 
-  private async getOrCreateCoursePage(course: { courseId: number; fullname: string }): Promise<string> {
-    const response = await this.client.search({
-      query: course.fullname,
-      filter: { value: 'page', property: 'object' },
-      page_size: 5,
-    });
+  private async getOrCreateCoursePage(course: { courseId: number; fullname: string; courseUrl: string | null }): Promise<string> {
+    const { schema, error: schemaError } = await this.resolveSchema(this.coursesDatabaseId!);
+    if (!schema) throw new Error(`Kursdatenbank-Schema konnte nicht gelesen werden: ${schemaError ?? 'unbekannter Fehler'}`);
 
-    const results = (response as { results?: unknown[] }).results || [];
-    for (const p of results) {
-      const page = p as Record<string, unknown>;
-      const parent = page.parent as Record<string, unknown> | undefined;
-      const databaseId = parent?.database_id;
-      if (
-        parent?.type === 'database_id' &&
-        typeof databaseId === 'string' &&
-        databaseId.replace(/-/g, '') === this.coursesDatabaseId!.replace(/-/g, '') &&
-        typeof page.id === 'string'
-      ) {
-        return page.id;
-      }
+    const titlePropName = this.titleFromSchema(schema);
+    const urlPropName = Array.from(schema).find(([, type]) => type === 'url')?.[0];
+    if (course.courseUrl && urlPropName) {
+      const byUrl = await this.client.queryDatabase(this.coursesDatabaseId!, {
+        filter: { property: urlPropName, url: { equals: course.courseUrl } },
+        page_size: 1,
+      });
+      const pageId = firstPageId(byUrl);
+      if (pageId) return pageId;
     }
 
-    const titlePropName = await this.getTitlePropertyName(this.coursesDatabaseId!);
+    const byTitle = await this.client.queryDatabase(this.coursesDatabaseId!, {
+      filter: { property: titlePropName, title: { equals: course.fullname } },
+      page_size: 1,
+    });
+    const titlePageId = firstPageId(byTitle);
+    if (titlePageId) return titlePageId;
+
+    const properties: Record<string, unknown> = {
+      [titlePropName]: titleProperty(course.fullname),
+    };
+    if (course.courseUrl && urlPropName) {
+      properties[urlPropName] = urlProperty(course.courseUrl);
+    }
     const newPage = await this.client.createPage({
       parent: { database_id: this.coursesDatabaseId! },
-      properties: {
-        [titlePropName]: titleProperty(course.fullname),
-      },
+      properties,
     });
     return extractPageId(newPage);
   }

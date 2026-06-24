@@ -12,7 +12,7 @@
  */
 
 /** Aktuelle Schema-Version; wird in PRAGMA user_version geschrieben. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_SQL = `
 -- profiles: Nutzerprofile (i. d. R. genau eines im MVP)
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS file_assets (
   source_url TEXT NOT NULL,
   filename_original TEXT NOT NULL,
   filename_local TEXT NOT NULL,
-  local_path TEXT NOT NULL,
+  local_path TEXT,
   size_bytes INTEGER,
   hash TEXT,
   status TEXT NOT NULL DEFAULT 'pending'
@@ -103,7 +103,9 @@ CREATE TABLE IF NOT EXISTS transcript_jobs (
   retry_count INTEGER NOT NULL DEFAULT 0,
   -- Schema-v4-Erweiterung: persistiertes Notion-Push-Ergebnis (kein Silent Fail)
   notion_push_status TEXT CHECK (notion_push_status IN ('ok','warnings','failed','skipped')),
-  notion_push_error TEXT
+  notion_push_error TEXT,
+  -- Schema-v6-Erweiterung: lokale Retry-Kopie nach fehlgeschlagenem Notion-only-Push
+  pending_local_path TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_jobs_recording_key ON transcript_jobs(recording_key) WHERE recording_key IS NOT NULL;

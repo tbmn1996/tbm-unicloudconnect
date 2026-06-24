@@ -86,6 +86,34 @@ test('Repositories speichern Kernentitäten und Secrets bleiben außerhalb der D
   }
 });
 
+test('FileAssets-Repository speichert und liest nullable localPath', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const repos = createRepos(db);
+    repos.courses.upsertMany([{ courseId: 42, fullname: 'Testkurs' }]);
+
+    const inserted = repos.fileAssets.insert({
+      activityCmid: null,
+      courseId: 42,
+      sourceUrl: 'https://example.invalid/notion-only.pdf',
+      filenameOriginal: 'notion-only.pdf',
+      filenameLocal: 'notion-only.pdf',
+      localPath: null,
+      sizeBytes: 123,
+      hash: 'hash-from-notion-leg',
+      status: 'downloaded',
+      downloadedAt: '2026-06-24T10:00:00.000Z',
+    });
+
+    const stored = repos.fileAssets.getAll()[0];
+    assert.equal(inserted.localPath, null);
+    assert.equal(stored?.localPath, null);
+    assert.equal(stored?.hash, 'hash-from-notion-leg');
+  } finally {
+    db.close();
+  }
+});
+
 test('SQLite-CHECK-Constraints weisen ungültige Statuswerte ab', () => {
   const db = openDatabase(':memory:');
   try {
@@ -109,6 +137,7 @@ test('Kontodaten werden per Kurs-Cascade gelöscht, lokale Einstellungen bleiben
     repos.courses.upsertMany([{ courseId: 42, fullname: 'Testkurs' }]);
     repos.activities.upsertMany([{ cmid: 100, courseId: 42, modtype: 'resource', name: 'Skript' }]);
     db.prepare("INSERT INTO file_assets (activity_cmid, course_id, source_url, filename_original, filename_local, local_path) VALUES (100, 42, 'https://example.invalid/file', 'a.pdf', 'a.pdf', '/tmp/a.pdf')").run();
+    db.prepare("INSERT INTO file_assets (activity_cmid, course_id, source_url, filename_original, filename_local, local_path) VALUES (100, 42, 'https://example.invalid/file2', 'b.pdf', 'b.pdf', NULL)").run();
     db.prepare("INSERT INTO transcript_jobs (course_id, activity_cmid, source_url) VALUES (42, 100, 'https://example.invalid/recording')").run();
     db.prepare("INSERT INTO selection_rules (course_id, scope) VALUES (42, 'course')").run();
     db.prepare("INSERT INTO download_jobs (course_id, activity_cmid, source_url) VALUES (42, 100, 'https://example.invalid/file')").run();
@@ -207,4 +236,3 @@ test('outputRefs-Repository speichert, holt und dedupliziert Referenzen', () => 
     db.close();
   }
 });
-

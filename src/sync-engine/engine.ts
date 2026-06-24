@@ -70,12 +70,15 @@ export class SyncEngine {
   }
 
   private async execute(trigger: 'manual' | 'startup' | 'scheduled'): Promise<void> {
+    const isNotionOnly = this.repos.settings.get('output.adapter') === 'notion';
     const libraryPath = this.access.getLibraryPath();
-    if (!libraryPath) throw new Error('Kein Bibliotheksordner konfiguriert.');
+    if (!libraryPath && !isNotionOnly) {
+      throw new Error('Kein Bibliotheksordner konfiguriert.');
+    }
     // Einmal pro Lauf bauen (nicht pro Datei) — vermeidet wiederholte Keychain-/Settings-Lookups.
     const router = await (this.outputRouterFactory
-      ? this.outputRouterFactory(libraryPath)
-      : this.buildDefaultRouter(libraryPath));
+      ? this.outputRouterFactory(libraryPath ?? '')
+      : this.buildDefaultRouter(libraryPath ?? ''));
 
     const courses = this.repos.courses.getSelected();
     const runId = this.repos.syncRuns.start(trigger);
@@ -157,33 +160,45 @@ export class SyncEngine {
       const download = await input.session.downloadFile(input.target.sourceUrl, {
         timeoutMs: DOWNLOAD_TIMEOUT_MS,
       });
+      const notionDatabaseId = this.repos.settings.get(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY);
+      const existingAsset = this.repos.fileAssets.findBySourceUrl(input.target.sourceUrl);
+      const alreadyPushedToNotion = !!(existingAsset && notionDatabaseId
+        && this.repos.outputRefs.getBySource('file_asset', existingAsset.id, notionDatabaseId));
       const placed = await input.router.placeFile({
         course: {
           courseId: input.course.courseId,
           fullname: input.course.fullname,
           semester: input.course.semester,
+          courseUrl: input.course.courseUrl,
         },
         sectionName: input.activity.sectionName,
         filename: download.filename ?? input.target.filename,
         bytes: download.bytes,
-        findExistingByHash: (hash) => this.repos.fileAssets.findByHash(hash),
-      });
+        findExistingByHash: (hash) => {
+          const found = this.repos.fileAssets.findByHash(hash);
+          return found && found.localPath ? { localPath: found.localPath } : null;
+        },
+      }, { skipNotion: alreadyPushedToNotion });
+      input.counters.warnings += placed.warnings.length;
       const stored = placed.filesystem;
       const fileAsset = this.repos.fileAssets.upsertBySourceUrl({
         activityCmid: input.target.activityCmid,
         courseId: input.course.courseId,
         sourceUrl: input.target.sourceUrl,
         filenameOriginal: download.filename ?? input.target.filename,
-        filenameLocal: stored.filename,
-        localPath: stored.relativePath ?? '',
-        sizeBytes: stored.sizeBytes,
-        hash: stored.hash,
-        status: stored.duplicate ? 'skipped_duplicate' : 'downloaded',
+        filenameLocal: stored
+          ? stored.filename
+          : (placed.notion?.filename ?? existingAsset?.filenameLocal ?? download.filename ?? input.target.filename),
+        localPath: stored ? (stored.relativePath ?? '') : null,
+        sizeBytes: stored
+          ? stored.sizeBytes
+          : (placed.notion?.sizeBytes ?? existingAsset?.sizeBytes ?? download.bytes.byteLength),
+        hash: stored ? stored.hash : (placed.notion?.hash ?? existingAsset?.hash ?? null),
+        status: (stored && stored.duplicate) ? 'skipped_duplicate' : 'downloaded',
         downloadedAt: new Date().toISOString(),
       });
       if (placed.notion?.remoteRef) {
-        const notionDatabaseId = this.repos.settings.get(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY);
-        if (notionDatabaseId) {
+        if (notionDatabaseId && !this.repos.outputRefs.getBySource('file_asset', fileAsset.id, notionDatabaseId)) {
           this.repos.outputRefs.insert({
             sourceEntityType: 'file_asset',
             sourceEntityId: fileAsset.id,
@@ -192,12 +207,14 @@ export class SyncEngine {
           });
         }
       }
+      // Reine Quelldateien haben keinen Pending-Speicher: scheitert nur der
+      // Notion-Push, lädt der nächste Sync-Lauf die Datei erneut aus LearnWeb.
       this.updateJob(jobId, {
-        status: stored.duplicate ? 'skipped_duplicate' : 'done',
-        localPath: stored.relativePath ?? null,
-        sizeBytes: stored.sizeBytes,
+        status: (stored && stored.duplicate) ? 'skipped_duplicate' : 'done',
+        localPath: stored ? (stored.relativePath ?? null) : null,
+        sizeBytes: stored ? stored.sizeBytes : (placed.notion?.sizeBytes ?? download.bytes.byteLength),
       });
-      if (!stored.duplicate) input.counters.downloaded++;
+      if (!stored || !stored.duplicate) input.counters.downloaded++;
       return 'downloaded';
     } catch (error) {
       const tooLarge = error instanceof LearnwebFileTooLargeError;
