@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { openDatabase } from '../db/db';
 import { createRepos, type Repos } from '../db/repos';
 import { deleteCredential, getPassword, KEYCHAIN_SERVICE, setCredential } from '../keychain/keychain';
@@ -50,6 +50,7 @@ export class AppRuntime {
       getLibraryPath: () => this.getLibraryPath(),
       workerDir: options.workerDir ?? join(process.cwd(), 'transcription-worker'),
       onStatus: options.onTranscriptionStatus ?? (() => undefined),
+      pendingTranscriptDir: join(dirname(dbPath), 'pending-transcripts'),
     });
     this.mcp = new McpRuntime({
       repos: this.repos,

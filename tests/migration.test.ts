@@ -1,12 +1,12 @@
 /**
- * Tests für Schema-Migration v1 → v5.
+ * Tests für Schema-Migration v1 → v6.
  *
  * Prüft:
  * - Neuinstallation legt direkt die aktuelle Version mit allen Spalten an
  * - Migration v1 → v2 via ALTER TABLE lädt die neuen Spalten + Index
  * - Migration v2 → v3 legt output_refs an
  * - Migration v3 → v4 lädt notion_push_status/notion_push_error (Notion-Push-Fix)
- * - Migration v4 → v5 macht file_assets.local_path nullable
+ * - Migration v4 → v6 macht file_assets.local_path nullable und ergänzt transcript_jobs.pending_local_path
  * - claimNext() liefert aufeinanderfolgend verschiedene Job-IDs
  * - enqueueFromCandidate() ist idempotent (doppelt derselbe recording_key = nur ein Job)
  * - recoverInterrupted() setzt unterbrochene Jobs auf 'pending'
@@ -197,13 +197,13 @@ test('Migration v1→v2: simulierte v1-DB wird auf v2 gehoben', () => {
   }
 });
 
-test('Neuinstallation legt direkt v5 mit allen Spalten an', () => {
+test('Neuinstallation legt direkt v6 mit allen Spalten an', () => {
   const db = openDatabase(':memory:');
   try {
     // Prüfe: user_version ist die aktuelle Schema-Version
     const version = db.pragma('user_version', { simple: true });
     assert.equal(version, SCHEMA_VERSION, `user_version sollte ${SCHEMA_VERSION} sein`);
-    assert.equal(SCHEMA_VERSION, 5);
+    assert.equal(SCHEMA_VERSION, 6);
 
     // Prüfe: alle v2-Spalten sind in der neu erstellten Tabelle vorhanden
     const tableInfo = db.prepare("PRAGMA table_info(transcript_jobs)").all() as Array<{ name: string }>;
@@ -220,6 +220,7 @@ test('Neuinstallation legt direkt v5 mit allen Spalten an', () => {
     assert.ok(columnNames.includes('retry_count'), 'retry_count sollte direkt in v2 vorhanden sein');
     assert.ok(columnNames.includes('notion_push_status'), 'notion_push_status sollte direkt in v4 vorhanden sein');
     assert.ok(columnNames.includes('notion_push_error'), 'notion_push_error sollte direkt in v4 vorhanden sein');
+    assert.ok(columnNames.includes('pending_local_path'), 'pending_local_path sollte direkt in v6 vorhanden sein');
 
     // Prüfe: der UNIQUE INDEX existiert
     const indexes = db.prepare(
@@ -242,7 +243,7 @@ test('Neuinstallation legt direkt v5 mit allen Spalten an', () => {
   }
 });
 
-test('Migration v2→v5: simulierte v2-DB nimmt v3, v4 und v5 mit', () => {
+test('Migration v2→v6: simulierte v2-DB nimmt v3 bis v6 mit', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
   const path = join(dir, 'state.sqlite');
   const v2 = createV2Database(path);
@@ -263,17 +264,18 @@ test('Migration v2→v5: simulierte v2-DB nimmt v3, v4 und v5 mit', () => {
     assert.ok(columnNames.includes('created_at'), 'created_at sollte vorhanden sein');
     assert.ok(columnNames.includes('updated_at'), 'updated_at sollte vorhanden sein');
 
-    // Prüfe: die v4-Spalten (Migration 3→4) sind ebenfalls vorhanden — openDatabase()
-    // migriert von v2 immer bis zur aktuellen SCHEMA_VERSION durch, nie nur bis v3.
+    // Prüfe: die späteren transcript_jobs-Spalten sind ebenfalls vorhanden —
+    // openDatabase() migriert von v2 immer bis zur aktuellen SCHEMA_VERSION durch.
     const jobColumns = db.prepare("PRAGMA table_info(transcript_jobs)").all() as Array<{ name: string }>;
     const jobColumnNames = jobColumns.map((c) => c.name);
     assert.ok(jobColumnNames.includes('notion_push_status'), 'notion_push_status sollte vorhanden sein');
     assert.ok(jobColumnNames.includes('notion_push_error'), 'notion_push_error sollte vorhanden sein');
+    assert.ok(jobColumnNames.includes('pending_local_path'), 'pending_local_path sollte vorhanden sein');
 
     // Prüfe: user_version ist jetzt die aktuelle Schema-Version
     const versionAfter = db.pragma('user_version', { simple: true });
     assert.equal(versionAfter, SCHEMA_VERSION);
-    assert.equal(versionAfter, 5);
+    assert.equal(versionAfter, 6);
 
     // Prüfe: der UNIQUE INDEX existiert
     const indexes = db.prepare(
@@ -286,7 +288,7 @@ test('Migration v2→v5: simulierte v2-DB nimmt v3, v4 und v5 mit', () => {
   }
 });
 
-test('Migration v3→v5: simulierte v3-DB wird auf v5 gehoben', () => {
+test('Migration v3→v6: simulierte v3-DB wird auf v6 gehoben', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
   const path = join(dir, 'state.sqlite');
   const v3 = createV3Database(path);
@@ -301,18 +303,19 @@ test('Migration v3→v5: simulierte v3-DB wird auf v5 gehoben', () => {
 
     assert.ok(columnNames.includes('notion_push_status'), 'notion_push_status sollte vorhanden sein');
     assert.ok(columnNames.includes('notion_push_error'), 'notion_push_error sollte vorhanden sein');
+    assert.ok(columnNames.includes('pending_local_path'), 'pending_local_path sollte vorhanden sein');
 
-    // Prüfe: user_version ist jetzt 5
+    // Prüfe: user_version ist jetzt 6
     const versionAfter = db.pragma('user_version', { simple: true });
     assert.equal(versionAfter, SCHEMA_VERSION);
-    assert.equal(versionAfter, 5);
+    assert.equal(versionAfter, 6);
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('Migration v4→v5: local_path in file_assets wird nullable', () => {
+test('Migration v4→v6: local_path in file_assets wird nullable und pending_local_path kommt dazu', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
   const path = join(dir, 'state.sqlite');
   const v4 = createV4Database(path);
@@ -336,6 +339,8 @@ test('Migration v4→v5: local_path in file_assets wird nullable', () => {
     const localPathCol = tableInfo.find((c) => c.name === 'local_path');
     assert.ok(localPathCol);
     assert.equal(localPathCol.notnull, 0, 'local_path sollte nullable sein');
+    const jobColumns = db.prepare("PRAGMA table_info(transcript_jobs)").all() as Array<{ name: string }>;
+    assert.ok(jobColumns.map((c) => c.name).includes('pending_local_path'), 'pending_local_path sollte vorhanden sein');
     db.prepare(`
       INSERT INTO file_assets (
         activity_cmid, course_id, source_url, filename_original, filename_local, local_path
@@ -352,10 +357,10 @@ test('Migration v4→v5: local_path in file_assets wird nullable', () => {
       { source_url: 'https://example.invalid/notion-only.pdf', local_path: null, hash: null },
     ]);
 
-    // Prüfe: user_version ist jetzt 5
+    // Prüfe: user_version ist jetzt 6
     const versionAfter = db.pragma('user_version', { simple: true });
     assert.equal(versionAfter, SCHEMA_VERSION);
-    assert.equal(versionAfter, 5);
+    assert.equal(versionAfter, 6);
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });

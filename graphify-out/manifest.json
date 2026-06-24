@@ -25,18 +25,18 @@
     "semantic_hash": ""
   },
   "src/db/db.ts": {
-    "mtime": 1782300446.513235,
-    "ast_hash": "54fd720d15aff2e68d2666752a1fb489",
+    "mtime": 1782333152.713769,
+    "ast_hash": "a851aa0260c56621d1e5ec836fedf31c",
     "semantic_hash": ""
   },
   "src/db/repos.ts": {
-    "mtime": 1782319849.78604,
-    "ast_hash": "f0917aa2391d29ffb69e54e7c20008f2",
+    "mtime": 1782333152.7155845,
+    "ast_hash": "d66433bcc6b5ad045ca77d21ee231964",
     "semantic_hash": ""
   },
   "src/db/schema.ts": {
-    "mtime": 1782300443.3065789,
-    "ast_hash": "7e535ad91cbda0fa589da8da99d24323",
+    "mtime": 1782333152.7128518,
+    "ast_hash": "f94a7194f52198be7d1b01c9cc1a2f84",
     "semantic_hash": ""
   },
   "src/index.ts": {
@@ -140,8 +140,8 @@
     "semantic_hash": ""
   },
   "src/main/runtime.ts": {
-    "mtime": 1782160926.608463,
-    "ast_hash": "7aaaa3526d1398e11cf8df53011c0d0e",
+    "mtime": 1782333152.717791,
+    "ast_hash": "1a0ab027772101cf4e53e1e845658b18",
     "semantic_hash": ""
   },
   "src/main/tray.ts": {
@@ -220,8 +220,8 @@
     "semantic_hash": ""
   },
   "src/shared/domain.ts": {
-    "mtime": 1782309646.7393262,
-    "ast_hash": "c6947279099e31536c898e64b091f2da",
+    "mtime": 1782333152.7147987,
+    "ast_hash": "108372cea48c9d5fa9f0d8f1e1407493",
     "semantic_hash": ""
   },
   "src/shared/ipc.ts": {
@@ -245,8 +245,8 @@
     "semantic_hash": ""
   },
   "src/transcription/manager.ts": {
-    "mtime": 1782321309.225221,
-    "ast_hash": "bcb6bd069418f57876ca24efac3b537f",
+    "mtime": 1782333152.7164829,
+    "ast_hash": "4dd1f358ca266b6cc17605118778a90b",
     "semantic_hash": ""
   },
   "tests/db.test.ts": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "tests/migration.test.ts": {
-    "mtime": 1782309735.195274,
-    "ast_hash": "9022276d59853ef6a759a11d57880768",
+    "mtime": 1782333247.082434,
+    "ast_hash": "37bf1f74979e625cfc2beadf121330c7",
     "semantic_hash": ""
   },
   "tests/parsers.test.ts": {
@@ -315,8 +315,8 @@
     "semantic_hash": ""
   },
   "tests/transcription-manager.test.ts": {
-    "mtime": 1782320043.389714,
-    "ast_hash": "1670c4f5601fbb6250ade601a44d4572",
+    "mtime": 1782333200.045616,
+    "ast_hash": "69dd9b4215aa169ad283f12784af6bee",
     "semantic_hash": ""
   },
   "transcription-worker/pyproject.toml": {

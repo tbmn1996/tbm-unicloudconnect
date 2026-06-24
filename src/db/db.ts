@@ -78,6 +78,9 @@ const MIGRATIONS: Readonly<Partial<Record<number, (db: AppDatabase) => void>>> =
       CREATE INDEX IF NOT EXISTS idx_file_assets_hash ON file_assets(hash);
     `);
   },
+  6: (db) => {
+    db.exec('ALTER TABLE transcript_jobs ADD COLUMN pending_local_path TEXT;');
+  },
 };
 
 /**

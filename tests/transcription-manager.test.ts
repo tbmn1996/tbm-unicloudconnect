@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -330,6 +330,100 @@ test('TranscriptionManager persistiert notion_push_status="failed" + notion_push
     assert.match(job.notionPushError ?? '', /Notion API Timeout/);
     const ref = f.repos.outputRefs.getBySource('transcript_job', job.id, 'db-xyz');
     assert.equal(ref, null, 'Bei failed darf keine output_refs-Zeile entstehen');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('TranscriptionManager löscht Notion-only-Transkripte nach erfolgreichem Push ohne Bibliothekspfad', async () => {
+  const f = fixture();
+  try {
+    f.repos.settings.set('output.adapter', 'notion');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({ adapter: 'notion', duplicate: false, remoteRef: 'irrelevant', hash: '', sizeBytes: 0, filename: '' }),
+      placeTranscript: async () => ({ adapter: 'notion', remoteRef: 'transcript-page-1' }),
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(f.root), notion: fakeNotionAdapter },
+      f.repos.settings,
+    );
+    let workerPath = '';
+
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => null,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+      outputRouterFactory: async () => router,
+      pendingTranscriptDir: join(f.root, 'pending'),
+      runWorker: async (request) => {
+        assert.notEqual(request.library_root, f.root);
+        workerPath = request.output_path;
+        mkdirSync(dirname(request.output_path), { recursive: true });
+        writeFileSync(request.output_path, '# Transkript', { encoding: 'utf8', flag: 'w' });
+        return { transcriptPath: request.output_path, model: 'mlx-whisper:small', durationSeconds: 61 };
+      },
+    });
+    const candidates = await manager.scanRecordings();
+    manager.enqueue([candidates[0]!.recordingKey]);
+    await manager.start();
+
+    const job = manager.getJobs()[0]!;
+    assert.equal(job.status, 'done');
+    assert.equal(job.notionPushStatus, 'ok');
+    assert.equal(job.transcriptLocalPath, null);
+    assert.equal(job.pendingLocalPath, null);
+    assert.equal(existsSync(workerPath), false);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('TranscriptionManager bewahrt Notion-only-Transkripte nach fehlgeschlagenem Push als pendingLocalPath auf', async () => {
+  const f = fixture();
+  try {
+    f.repos.settings.set('output.adapter', 'notion');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({ adapter: 'notion', duplicate: false, remoteRef: 'irrelevant', hash: '', sizeBytes: 0, filename: '' }),
+      placeTranscript: async () => { throw new Error('Notion API Timeout'); },
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(f.root), notion: fakeNotionAdapter },
+      f.repos.settings,
+    );
+
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => null,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+      outputRouterFactory: async () => router,
+      pendingTranscriptDir: join(f.root, 'pending'),
+      runWorker: async (request) => {
+        mkdirSync(dirname(request.output_path), { recursive: true });
+        writeFileSync(request.output_path, '# Transkript', { encoding: 'utf8', flag: 'w' });
+        return { transcriptPath: request.output_path, model: 'mlx-whisper:small', durationSeconds: 61 };
+      },
+    });
+    const candidates = await manager.scanRecordings();
+    manager.enqueue([candidates[0]!.recordingKey]);
+    await manager.start();
+
+    const job = manager.getJobs()[0]!;
+    assert.equal(job.status, 'done');
+    assert.equal(job.notionPushStatus, 'failed');
+    assert.match(job.notionPushError ?? '', /Notion API Timeout/);
+    assert.equal(job.transcriptLocalPath, null);
+    assert.match(job.pendingLocalPath ?? '', /pending/);
+    assert.equal(readFileSync(job.pendingLocalPath!, 'utf8'), '# Transkript');
   } finally {
     f.cleanup();
   }

@@ -243,6 +243,8 @@ export interface TranscriptJob {
   notionPushStatus: 'ok' | 'warnings' | 'failed' | 'skipped' | null;
   /** Klartext-Meldung bei notionPushStatus 'warnings'/'failed', sonst null. */
   notionPushError: string | null;
+  /** Lokale Retry-Kopie, wenn ein Notion-only-Transkript-Push fehlgeschlagen ist. */
+  pendingLocalPath: string | null;
 }
 
 export interface SyncRun {

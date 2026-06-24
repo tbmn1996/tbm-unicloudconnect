@@ -1,8 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Repos } from '../db/repos';
 import { LearnwebClient } from '../learnweb-core/client';
@@ -16,6 +16,7 @@ import {
   OUTPUT_NOTION_DATABASE_ID_SETTING_KEY,
   OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY,
 } from '../output-adapters/types';
+import type { NotionPushStatus } from '../output-adapters/router';
 import type {
   Course,
   RecordingCandidate,
@@ -73,6 +74,7 @@ export interface TranscriptionManagerOptions {
    * unverändert bleiben — Default baut intern aus `repos`.
    */
   outputRouterFactory?: (libraryPath: string) => Promise<OutputRouter>;
+  pendingTranscriptDir?: string;
 }
 
 export class TranscriptionManager {
@@ -275,19 +277,18 @@ export class TranscriptionManager {
     this.activeJob = job;
     this.activeAbort = new AbortController();
     let tempDir: string | null = null;
+    let transcriptTempDir: string | null = null;
     try {
       const libraryRoot = this.options.getLibraryPath();
-      if (!libraryRoot) throw new Error('Kein Bibliothekspfad konfiguriert.');
+      const isNotionOnly = this.options.repos.settings.get('output.adapter') === 'notion';
+      if (!libraryRoot && !isNotionOnly) throw new Error('Kein Bibliothekspfad konfiguriert.');
       const course = this.options.repos.courses.getAll().find((item) => item.courseId === job.courseId);
       if (!course) throw new Error('Kurs zum Transkriptionsjob fehlt.');
-      const outputPath = join(
-        libraryRoot,
-        ...(course.semester ? [sanitizePathSegment(course.semester)] : []),
-        sanitizePathSegment(course.fullname, 'Kurs'),
-        ...(job.sectionName ? [sanitizePathSegment(job.sectionName, 'Allgemein')] : []),
-        'Transkripte',
-        `${sanitizePathSegment(job.title ?? 'Aufzeichnung')}-${sanitizePathSegment(job.recordingKey ?? String(job.id)).slice(0, 8)}.md`,
-      );
+      const transcriptRoot = isNotionOnly
+        ? await mkdtemp(join(tmpdir(), 'ucc-transcript-'))
+        : libraryRoot;
+      transcriptTempDir = isNotionOnly ? transcriptRoot : null;
+      const outputPath = buildTranscriptPath(transcriptRoot!, course, job);
 
       let mediaPath: string | undefined;
       if (job.needsAuth) {
@@ -335,7 +336,7 @@ export class TranscriptionManager {
         language: settings.language,
         model: settings.model,
         output_path: outputPath,
-        library_root: libraryRoot,
+        library_root: transcriptRoot!,
         title: job.title ?? 'Aufzeichnung',
         metadata: { course_name: course.fullname, recording_date: job.recordingDate },
       };
@@ -352,11 +353,17 @@ export class TranscriptionManager {
         transcriptLocalPath: result.transcriptPath,
         model: result.model,
         durationSeconds: result.durationSeconds,
+        pendingLocalPath: null,
       });
-      // Worker hat die .md-Datei bereits geschrieben (Subprozess-Vertrag bleibt
-      // unverändert) — Notion-Push ist ein zusätzlicher, additiver Schritt danach.
-      await this.pushTranscriptToOutputRouter(job, course, libraryRoot, result);
-      this.options.repos.transcriptJobs.setStatus(job.id, 'done', { mediaLocalPath: null });
+      const notionStatus = await this.pushTranscriptToOutputRouter(job, course, transcriptRoot!, result);
+      const pendingLocalPath = isNotionOnly && notionStatus === 'failed'
+        ? await moveToPendingTranscriptDir(result.transcriptPath, this.pendingTranscriptDir(), course, job)
+        : null;
+      this.options.repos.transcriptJobs.setStatus(job.id, 'done', {
+        mediaLocalPath: null,
+        transcriptLocalPath: isNotionOnly ? null : result.transcriptPath,
+        pendingLocalPath,
+      });
       this.message = 'Transkript wurde erstellt.';
     } catch (error) {
       if (this.activeAbort?.signal.aborted) return;
@@ -372,6 +379,7 @@ export class TranscriptionManager {
         : 'Transkription nach mehreren Versuchen fehlgeschlagen.';
     } finally {
       if (tempDir) await rm(tempDir, { recursive: true, force: true });
+      if (transcriptTempDir) await rm(transcriptTempDir, { recursive: true, force: true });
       this.activeJob = null;
       this.activeAbort = null;
       this.progress = undefined;
@@ -391,7 +399,7 @@ export class TranscriptionManager {
     course: Course,
     libraryRoot: string,
     result: WorkerResult,
-  ): Promise<void> {
+  ): Promise<NotionPushStatus> {
     try {
       const router = await (this.options.outputRouterFactory
         ? this.options.outputRouterFactory(libraryRoot)
@@ -434,12 +442,18 @@ export class TranscriptionManager {
           ? placed.warnings.join('; ')
           : null;
       this.options.repos.transcriptJobs.setNotionPushResult(job.id, placed.notionStatus, notionPushError);
+      return placed.notionStatus;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[transcription] Output-Router-Push für Job ${job.id} fehlgeschlagen:`, error);
       appendLog('ERROR', `[transcription] Output-Router-Push für Job ${job.id} fehlgeschlagen: ${message}`);
       this.options.repos.transcriptJobs.setNotionPushResult(job.id, 'failed', message);
+      return 'failed';
     }
+  }
+
+  private pendingTranscriptDir(): string {
+    return this.options.pendingTranscriptDir ?? join(tmpdir(), 'tbm-unicloudconnect', 'pending-transcripts');
   }
 
   private async buildDefaultRouter(libraryPath: string): Promise<OutputRouter> {
@@ -460,6 +474,30 @@ export class TranscriptionManager {
   private publish(): void {
     this.options.onStatus(this.getStatus());
   }
+}
+
+function buildTranscriptPath(root: string, course: Course, job: TranscriptJob): string {
+  return join(
+    root,
+    ...(course.semester ? [sanitizePathSegment(course.semester)] : []),
+    sanitizePathSegment(course.fullname, 'Kurs'),
+    ...(job.sectionName ? [sanitizePathSegment(job.sectionName, 'Allgemein')] : []),
+    'Transkripte',
+    `${sanitizePathSegment(job.title ?? 'Aufzeichnung')}-${sanitizePathSegment(job.recordingKey ?? String(job.id)).slice(0, 8)}.md`,
+  );
+}
+
+async function moveToPendingTranscriptDir(source: string, root: string, course: Course, job: TranscriptJob): Promise<string> {
+  const destination = buildTranscriptPath(root, course, job);
+  await mkdir(dirname(destination), { recursive: true });
+  try {
+    await rename(source, destination);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error;
+    await copyFile(source, destination);
+    await unlink(source);
+  }
+  return destination;
 }
 
 class WorkerError extends Error {
