@@ -19,7 +19,7 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Optional
 
 # MediaHandling (PyAV)
 try:
@@ -240,6 +240,11 @@ def normalize_audio(input_path: str, output_path: str) -> int:
         resampled_frames = resampler.resample(frame)
         # resample() gibt eine Liste von Frames zurück
         for resampled_frame in resampled_frames:
+            # PTS zuruecksetzen: die resampleten Frames tragen noch die
+            # Zeitstempel der Quellspur (z. B. 48 kHz/Stereo). Beim Muxen in
+            # die 16-kHz-Mono-WAV ergeben diese ungueltige Zeitstempel
+            # (EINVAL/errno 22). None laesst den Encoder gueltige PTS vergeben.
+            resampled_frame.pts = None
             # Encode und mux
             for packet in out_stream.encode(resampled_frame):
                 out_container.mux(packet)
@@ -247,6 +252,7 @@ def normalize_audio(input_path: str, output_path: str) -> int:
 
     # Flush des Resamplers und Encoders
     for resampled_frame in resampler.resample(None):
+        resampled_frame.pts = None  # s. o.: ungueltige Quell-PTS vermeiden
         for packet in out_stream.encode(resampled_frame):
             out_container.mux(packet)
         total_samples += resampled_frame.samples
@@ -284,6 +290,7 @@ def transcribe_audio(
     language: str,
     backend_name: str,
     backend_module: Any,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> tuple[str, str]:
     """
     Transkribiere Audio mit Whisper-Backend.
@@ -295,11 +302,28 @@ def transcribe_audio(
     if backend_name == "mlx_whisper":
         # mlx-whisper API: transcribe() gibt dict zurück, nicht einen Generator
         repo = _map_model_to_mlx_repo(model)
-        result = backend_module.transcribe(
-            audio_path,
-            path_or_hf_repo=repo,
-            language=None if language == "auto" else language,
-        )
+
+        if on_progress:
+            import tqdm
+            class TqdmProgressInterceptor(tqdm.tqdm):
+                def update(self, n=1):
+                    super().update(n)
+                    if self.total:
+                        on_progress(self.n, self.total)
+
+            original_tqdm = tqdm.tqdm
+            tqdm.tqdm = TqdmProgressInterceptor
+
+        try:
+            result = backend_module.transcribe(
+                audio_path,
+                path_or_hf_repo=repo,
+                language=None if language == "auto" else language,
+                verbose=False if on_progress else None,
+            )
+        finally:
+            if on_progress:
+                tqdm.tqdm = original_tqdm
 
         # result ist ein dict mit "text", "segments", "language"
         # Nutze Segmente für Zeitmarken (wenn vorhanden), sonst Text
@@ -337,7 +361,10 @@ def transcribe_audio(
             language=language if language != "auto" else None,
             beam_size=5,
         )
-        # Sammle alle Segmente mit Zeitmarken
+
+        total_duration = info.duration if (info and hasattr(info, 'duration') and info.duration) else None
+
+        # Sammle alle Segmente mit Zeitmarken und melde Fortschritt
         transcript_segments = []
         for segment in segments:
             transcript_segments.append({
@@ -345,6 +372,9 @@ def transcribe_audio(
                 "end": segment.end,
                 "text": segment.text,
             })
+            if total_duration and on_progress:
+                on_progress(int(segment.end), int(total_duration))
+
         transcript = json.dumps(transcript_segments)
         backend_label = f"faster-whisper:{model}"
 
@@ -716,6 +746,15 @@ def process_request(request: dict[str, Any]) -> dict[str, Any]:
                 "total": 100,
             })
 
+            def on_transcribe_progress(done: int, total: int):
+                emit_event({
+                    "type": "progress",
+                    "id": job_id,
+                    "phase": "transcribing",
+                    "done": done,
+                    "total": total,
+                })
+
             try:
                 transcript, backend_label = transcribe_audio(
                     str(wav_file),
@@ -723,6 +762,7 @@ def process_request(request: dict[str, Any]) -> dict[str, Any]:
                     language,
                     backend_name,
                     backend_module,
+                    on_progress=on_transcribe_progress,
                 )
             except Exception as e:
                 return {
