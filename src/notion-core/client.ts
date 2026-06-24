@@ -153,4 +153,9 @@ export class NotionClient {
   public async appendBlockChildren(blockId: string, children: unknown[]): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>('PATCH', `/blocks/${blockId}/children`, { children });
   }
+
+  /** Ruft Metadaten und Schema einer Notion-Datenbank ab. */
+  public async retrieveDatabase(databaseId: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>('GET', `/databases/${databaseId}`);
+  }
 }
