@@ -11,6 +11,7 @@ const course: OutputCourseInfo = {
   courseId: 1,
   fullname: 'Softwaretechnik',
   semester: 'SoSe 2026',
+  courseUrl: null,
 };
 
 test('placeFile schreibt eine neue Datei in die lokale Bibliothek', async () => {

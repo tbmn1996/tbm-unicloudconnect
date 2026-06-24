@@ -169,6 +169,7 @@ export class SyncEngine {
           courseId: input.course.courseId,
           fullname: input.course.fullname,
           semester: input.course.semester,
+          courseUrl: input.course.courseUrl,
         },
         sectionName: input.activity.sectionName,
         filename: download.filename ?? input.target.filename,

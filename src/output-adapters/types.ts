@@ -12,6 +12,7 @@ export interface OutputCourseInfo {
   courseId: number;
   fullname: string;
   semester: string | null;
+  courseUrl: string | null;
 }
 
 export interface PlaceFileInput {

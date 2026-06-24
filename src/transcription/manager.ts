@@ -402,7 +402,7 @@ export class TranscriptionManager {
       const alreadyPushedToNotion = !!(notionDatabaseId
         && this.options.repos.outputRefs.getBySource('transcript_job', job.id, notionDatabaseId));
       const placed = await router.placeTranscript({
-        course: { courseId: course.courseId, fullname: course.fullname, semester: course.semester },
+        course: { courseId: course.courseId, fullname: course.fullname, semester: course.semester, courseUrl: course.courseUrl },
         title: job.title,
         recordingDate: job.recordingDate,
         model: result.model,

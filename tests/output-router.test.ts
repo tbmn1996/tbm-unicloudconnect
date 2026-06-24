@@ -13,7 +13,7 @@ import type {
 /** Baut einen minimalen, aber vertragskonformen PlaceFileInput für Tests. */
 function makeFileInput(): PlaceFileInput {
   return {
-    course: { courseId: 1, fullname: 'Testkurs', semester: 'SoSe26' },
+    course: { courseId: 1, fullname: 'Testkurs', semester: 'SoSe26', courseUrl: null },
     sectionName: 'Vorlesungen',
     filename: 'folie.pdf',
     bytes: new Uint8Array([1, 2, 3]),
@@ -23,7 +23,7 @@ function makeFileInput(): PlaceFileInput {
 /** Baut einen minimalen, aber vertragskonformen PlaceTranscriptInput für Tests. */
 function makeTranscriptInput(): PlaceTranscriptInput {
   return {
-    course: { courseId: 1, fullname: 'Testkurs', semester: 'SoSe26' },
+    course: { courseId: 1, fullname: 'Testkurs', semester: 'SoSe26', courseUrl: null },
     title: 'Vorlesung 1',
     recordingDate: '2026-06-01',
     model: 'whisper',

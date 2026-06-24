@@ -15,6 +15,7 @@ import type { OutputCourseInfo, PlaceFileInput, PlaceTranscriptInput } from '../
 const DEFAULT_SCHEMA: Record<string, string> = {
   Name: 'title',
   Kurs: 'rich_text',
+  URL: 'url',
   Semester: 'rich_text',
   Sektion: 'rich_text',
   Typ: 'rich_text',
@@ -26,7 +27,7 @@ const DEFAULT_SCHEMA: Record<string, string> = {
 /** Baut ein Fake-NotionClient-Objekt, das Aufrufe aufzeichnet (kein echter Netzwerkzugriff). */
 function makeFakeClient(opts?: {
   pageId?: string;
-  searchResult?: any;
+  queryDatabaseImpl?: (databaseId: string, params: any) => any;
   newPageId?: string;
   /** Property-Name -> Notion-Property-Typ; Default deckt alle in Tests genutzten Properties ab. */
   schema?: Record<string, string>;
@@ -37,7 +38,7 @@ function makeFakeClient(opts?: {
   const newPageId = opts?.newPageId ?? 'new-course-page-999';
   const createPageCalls: any[] = [];
   const appendBlockChildrenCalls: any[] = [];
-  const searchCalls: any[] = [];
+  const queryDatabaseCalls: Array<{ databaseId: string; params: any }> = [];
   const retrieveDatabaseCalls: string[] = [];
   const schema = opts?.schema ?? DEFAULT_SCHEMA;
 
@@ -53,11 +54,9 @@ function makeFakeClient(opts?: {
       appendBlockChildrenCalls.push({ blockId, children });
       return { object: 'list', results: [] };
     },
-    search: async (params: any) => {
-      searchCalls.push(params);
-      if (opts?.searchResult !== undefined) {
-        return opts.searchResult;
-      }
+    queryDatabase: async (databaseId: string, params: any) => {
+      queryDatabaseCalls.push({ databaseId, params });
+      if (opts?.queryDatabaseImpl) return opts.queryDatabaseImpl(databaseId, params);
       return { object: 'list', results: [] };
     },
     retrieveDatabase: async (databaseId: string) => {
@@ -73,7 +72,7 @@ function makeFakeClient(opts?: {
     client: client as unknown as NotionClient,
     createPageCalls,
     appendBlockChildrenCalls,
-    searchCalls,
+    queryDatabaseCalls,
     retrieveDatabaseCalls,
   };
 }
@@ -82,6 +81,7 @@ const course: OutputCourseInfo = {
   courseId: 1,
   fullname: 'Wirtschaftsinformatik Grundlagen',
   semester: 'SoSe 2026',
+  courseUrl: 'https://www.uni-muenster.de/LearnWeb/learnweb2/course/view.php?id=91465',
 };
 
 test('placeFile ruft createPage mit korrektem database_id und Properties auf und liefert remoteRef', async () => {
@@ -211,24 +211,10 @@ test('placeTranscript routes to meetingDatabaseId if configured', async () => {
   assert.equal(createPageCalls[0].parent.database_id, 'db-meetings');
 });
 
-test('placeFile checks or creates course page in coursesDatabaseId if configured and links Kurs property via relation', async () => {
-  const searchResult = {
-    object: 'list',
-    results: [
-      {
-        object: 'page',
-        id: 'existing-course-page-77',
-        parent: {
-          type: 'database_id',
-          database_id: 'db-courses-uuid',
-        },
-      },
-    ],
-  };
-
-  const { client, createPageCalls, searchCalls } = makeFakeClient({
+test('placeFile findet Kursseite per URL in coursesDatabaseId und verlinkt Kurs property via relation', async () => {
+  const { client, createPageCalls, queryDatabaseCalls } = makeFakeClient({
     pageId: 'file-page-1',
-    searchResult,
+    queryDatabaseImpl: () => ({ object: 'list', results: [{ object: 'page', id: 'existing-course-page-77' }] }),
   });
 
   const adapter = new NotionAdapter(client, 'db-files', 'db-courses-uuid');
@@ -242,8 +228,14 @@ test('placeFile checks or creates course page in coursesDatabaseId if configured
 
   const result = await adapter.placeFile(input);
 
-  assert.equal(searchCalls.length, 1);
-  assert.equal(searchCalls[0].query, 'Wirtschaftsinformatik Grundlagen');
+  assert.equal(queryDatabaseCalls.length, 1);
+  const queryCall = queryDatabaseCalls[0];
+  assert.ok(queryCall);
+  assert.equal(queryCall.databaseId, 'db-courses-uuid');
+  assert.deepEqual(queryCall.params, {
+    filter: { property: 'URL', url: { equals: course.courseUrl } },
+    page_size: 1,
+  });
   assert.equal(createPageCalls.length, 1);
   assert.equal(createPageCalls[0].parent.database_id, 'db-files');
   assert.deepEqual(createPageCalls[0].properties.Kurs, { relation: [{ id: 'existing-course-page-77' }] });
@@ -251,9 +243,9 @@ test('placeFile checks or creates course page in coursesDatabaseId if configured
 });
 
 test('placeFile creates course page in coursesDatabaseId if not found and links Kurs property via relation', async () => {
-  const { client, createPageCalls, searchCalls } = makeFakeClient({
+  const { client, createPageCalls, queryDatabaseCalls } = makeFakeClient({
     pageId: 'file-page-1',
-    searchResult: { object: 'list', results: [] },
+    queryDatabaseImpl: () => ({ object: 'list', results: [] }),
     newPageId: 'new-course-page-999',
   });
 
@@ -268,12 +260,86 @@ test('placeFile creates course page in coursesDatabaseId if not found and links 
 
   await adapter.placeFile(input);
 
-  assert.equal(searchCalls.length, 1);
+  assert.equal(queryDatabaseCalls.length, 2);
   assert.equal(createPageCalls.length, 2);
   assert.equal(createPageCalls[0].parent.database_id, 'db-courses-uuid');
   assert.deepEqual(createPageCalls[0].properties.Name, { title: [{ text: { content: 'Wirtschaftsinformatik Grundlagen' } }] });
+  assert.deepEqual(createPageCalls[0].properties.URL, { url: course.courseUrl });
   assert.equal(createPageCalls[1].parent.database_id, 'db-files');
   assert.deepEqual(createPageCalls[1].properties.Kurs, { relation: [{ id: 'new-course-page-999' }] });
+});
+
+test('placeFile nutzt exakten Title-Fallback, wenn URL keinen Treffer liefert', async () => {
+  const { client, createPageCalls, queryDatabaseCalls } = makeFakeClient({
+    pageId: 'file-page-1',
+    queryDatabaseImpl: (_databaseId, params) => {
+      if (params.filter?.title?.equals === course.fullname) {
+        return { object: 'list', results: [{ object: 'page', id: 'title-course-page-88' }] };
+      }
+      return { object: 'list', results: [] };
+    },
+  });
+
+  const adapter = new NotionAdapter(client, 'db-files', 'db-courses-uuid');
+
+  await adapter.placeFile({
+    course,
+    sectionName: 'Woche 3',
+    filename: 'folien.pdf',
+    bytes: new TextEncoder().encode('hallo welt'),
+  });
+
+  assert.equal(queryDatabaseCalls.length, 2);
+  const titleQueryCall = queryDatabaseCalls[1];
+  assert.ok(titleQueryCall);
+  assert.deepEqual(titleQueryCall.params, {
+    filter: { property: 'Name', title: { equals: course.fullname } },
+    page_size: 1,
+  });
+  assert.equal(createPageCalls.length, 1);
+  assert.deepEqual(createPageCalls[0].properties.Kurs, { relation: [{ id: 'title-course-page-88' }] });
+});
+
+test('placeFile überspringt URL-Lookup, wenn die Kurs-DB keine URL-Property hat', async () => {
+  const { client, queryDatabaseCalls } = makeFakeClient({
+    schema: { Name: 'title', Kurs: 'rich_text', Semester: 'rich_text', Sektion: 'rich_text', Typ: 'rich_text', Datum: 'date' },
+    queryDatabaseImpl: () => ({ object: 'list', results: [{ object: 'page', id: 'title-only-page-1' }] }),
+  });
+  const adapter = new NotionAdapter(client, 'db-files', 'db-courses-uuid');
+
+  await adapter.placeFile({
+    course,
+    sectionName: 'Woche 3',
+    filename: 'folien.pdf',
+    bytes: new TextEncoder().encode('hallo welt'),
+  });
+
+  assert.equal(queryDatabaseCalls.length, 1);
+  const titleOnlyQueryCall = queryDatabaseCalls[0];
+  assert.ok(titleOnlyQueryCall);
+  assert.deepEqual(titleOnlyQueryCall.params, {
+    filter: { property: 'Name', title: { equals: course.fullname } },
+    page_size: 1,
+  });
+});
+
+test('placeFile meldet fehlgeschlagenen Kurs-DB-Schema-Abruf statt falscher Relation', async () => {
+  const { client, createPageCalls, queryDatabaseCalls } = makeFakeClient({
+    pageId: 'file-page-schema-fallback',
+    schemaError: new Error('Notion API Timeout'),
+  });
+  const adapter = new NotionAdapter(client, 'db-files', 'db-courses-uuid');
+
+  const result = await adapter.placeFile({
+    course,
+    sectionName: 'Woche 3',
+    filename: 'folien.pdf',
+    bytes: new TextEncoder().encode('hallo welt'),
+  });
+
+  assert.equal(queryDatabaseCalls.length, 0);
+  assert.deepEqual(createPageCalls[0].properties.Kurs, { rich_text: [{ text: { content: course.fullname } }] });
+  assert.ok(result.warnings?.some((warning) => warning.includes('Schema-Abruf fehlgeschlagen')));
 });
 
 // --- Schema-Awareness (Notion-Push-Fix: Modell/Dauer (s) existierten nicht in der echten Meeting-DB) ---

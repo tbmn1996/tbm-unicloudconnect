@@ -114,7 +114,7 @@ test(
 
         const markdown = await readFile(job.transcriptLocalPath, 'utf-8');
         const result = await adapter.placeTranscript({
-          course: { courseId: course.courseId, fullname: course.fullname, semester: course.semester },
+          course: { courseId: course.courseId, fullname: course.fullname, semester: course.semester, courseUrl: course.courseUrl },
           title: job.title,
           recordingDate: job.recordingDate,
           model: job.model,
