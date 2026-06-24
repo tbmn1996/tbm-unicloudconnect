@@ -6,24 +6,76 @@ import { NOTION_MAX_BLOCKS_PER_REQUEST } from '../src/notion-core/constants';
 import type { NotionClient } from '../src/notion-core/client';
 import type { OutputCourseInfo, PlaceFileInput, PlaceTranscriptInput } from '../src/output-adapters/types';
 
+/**
+ * Default-Schema für den Fake-Client: deckt ALLE Properties ab, die die
+ * bestehenden (verhaltens-erhaltenden) Tests unten in `createPage`-Calls
+ * erwarten. So bleibt das Standardverhalten "ungefiltert", solange ein Test
+ * nicht bewusst ein restriktiveres `schema` übergibt (siehe Filter-Tests).
+ */
+const DEFAULT_SCHEMA: Record<string, string> = {
+  Name: 'title',
+  Kurs: 'rich_text',
+  Semester: 'rich_text',
+  Sektion: 'rich_text',
+  Typ: 'rich_text',
+  Datum: 'date',
+  Modell: 'rich_text',
+  'Dauer (s)': 'number',
+};
+
 /** Baut ein Fake-NotionClient-Objekt, das Aufrufe aufzeichnet (kein echter Netzwerkzugriff). */
-function makeFakeClient(opts?: { pageId?: string }) {
+function makeFakeClient(opts?: {
+  pageId?: string;
+  searchResult?: any;
+  newPageId?: string;
+  /** Property-Name -> Notion-Property-Typ; Default deckt alle in Tests genutzten Properties ab. */
+  schema?: Record<string, string>;
+  /** Simuliert einen fehlschlagenden Schema-Abruf (z. B. API-Timeout). */
+  schemaError?: Error;
+}) {
   const pageId = opts?.pageId ?? 'page-123';
+  const newPageId = opts?.newPageId ?? 'new-course-page-999';
   const createPageCalls: any[] = [];
   const appendBlockChildrenCalls: any[] = [];
+  const searchCalls: any[] = [];
+  const retrieveDatabaseCalls: string[] = [];
+  const schema = opts?.schema ?? DEFAULT_SCHEMA;
 
   const client = {
     createPage: async (body: any) => {
       createPageCalls.push(body);
+      if (body.parent?.database_id && body.parent.database_id.includes('course')) {
+        return { object: 'page', id: newPageId };
+      }
       return { object: 'page', id: pageId };
     },
     appendBlockChildren: async (blockId: string, children: unknown[]) => {
       appendBlockChildrenCalls.push({ blockId, children });
       return { object: 'list', results: [] };
     },
+    search: async (params: any) => {
+      searchCalls.push(params);
+      if (opts?.searchResult !== undefined) {
+        return opts.searchResult;
+      }
+      return { object: 'list', results: [] };
+    },
+    retrieveDatabase: async (databaseId: string) => {
+      retrieveDatabaseCalls.push(databaseId);
+      if (opts?.schemaError) throw opts.schemaError;
+      const properties: Record<string, { type: string }> = {};
+      for (const [name, type] of Object.entries(schema)) properties[name] = { type };
+      return { object: 'database', properties };
+    },
   };
 
-  return { client: client as unknown as NotionClient, createPageCalls, appendBlockChildrenCalls };
+  return {
+    client: client as unknown as NotionClient,
+    createPageCalls,
+    appendBlockChildrenCalls,
+    searchCalls,
+    retrieveDatabaseCalls,
+  };
 }
 
 const course: OutputCourseInfo = {
@@ -137,4 +189,179 @@ test('createNotionAdapter gibt null zurück, wenn credentials.get("notion") null
 
   const adapter = await createNotionAdapter(repos);
   assert.equal(adapter, null);
+});
+
+test('placeTranscript routes to meetingDatabaseId if configured', async () => {
+  const { client, createPageCalls } = makeFakeClient({ pageId: 'transcript-page-1' });
+  const adapter = new NotionAdapter(client, 'db-xyz', undefined, 'db-meetings');
+
+  const input: PlaceTranscriptInput = {
+    course,
+    title: 'Vorlesung 5',
+    recordingDate: '2026-06-10',
+    model: 'whisper-large-v3',
+    durationSeconds: 3600,
+    markdown: 'Erster Absatz.',
+    alreadyWrittenLocalPath: '/tmp/irrelevant.md',
+  };
+
+  await adapter.placeTranscript(input);
+
+  assert.equal(createPageCalls.length, 1);
+  assert.equal(createPageCalls[0].parent.database_id, 'db-meetings');
+});
+
+test('placeFile checks or creates course page in coursesDatabaseId if configured and links Kurs property via relation', async () => {
+  const searchResult = {
+    object: 'list',
+    results: [
+      {
+        object: 'page',
+        id: 'existing-course-page-77',
+        parent: {
+          type: 'database_id',
+          database_id: 'db-courses-uuid',
+        },
+      },
+    ],
+  };
+
+  const { client, createPageCalls, searchCalls } = makeFakeClient({
+    pageId: 'file-page-1',
+    searchResult,
+  });
+
+  const adapter = new NotionAdapter(client, 'db-files', 'db-courses-uuid');
+
+  const input: PlaceFileInput = {
+    course,
+    sectionName: 'Woche 3',
+    filename: 'folien.pdf',
+    bytes: new TextEncoder().encode('hallo welt'),
+  };
+
+  const result = await adapter.placeFile(input);
+
+  assert.equal(searchCalls.length, 1);
+  assert.equal(searchCalls[0].query, 'Wirtschaftsinformatik Grundlagen');
+  assert.equal(createPageCalls.length, 1);
+  assert.equal(createPageCalls[0].parent.database_id, 'db-files');
+  assert.deepEqual(createPageCalls[0].properties.Kurs, { relation: [{ id: 'existing-course-page-77' }] });
+  assert.equal(result.remoteRef, 'file-page-1');
+});
+
+test('placeFile creates course page in coursesDatabaseId if not found and links Kurs property via relation', async () => {
+  const { client, createPageCalls, searchCalls } = makeFakeClient({
+    pageId: 'file-page-1',
+    searchResult: { object: 'list', results: [] },
+    newPageId: 'new-course-page-999',
+  });
+
+  const adapter = new NotionAdapter(client, 'db-files', 'db-courses-uuid');
+
+  const input: PlaceFileInput = {
+    course,
+    sectionName: 'Woche 3',
+    filename: 'folien.pdf',
+    bytes: new TextEncoder().encode('hallo welt'),
+  };
+
+  await adapter.placeFile(input);
+
+  assert.equal(searchCalls.length, 1);
+  assert.equal(createPageCalls.length, 2);
+  assert.equal(createPageCalls[0].parent.database_id, 'db-courses-uuid');
+  assert.deepEqual(createPageCalls[0].properties.Name, { title: [{ text: { content: 'Wirtschaftsinformatik Grundlagen' } }] });
+  assert.equal(createPageCalls[1].parent.database_id, 'db-files');
+  assert.deepEqual(createPageCalls[1].properties.Kurs, { relation: [{ id: 'new-course-page-999' }] });
+});
+
+// --- Schema-Awareness (Notion-Push-Fix: Modell/Dauer (s) existierten nicht in der echten Meeting-DB) ---
+
+test('placeTranscript filtert Properties, die im DB-Schema nicht existieren, und meldet eine Warnung pro Property', async () => {
+  // Schema ohne 'Modell' und 'Dauer (s)' simuliert exakt die echte Meeting-DB aus dem Bugreport.
+  const { client, createPageCalls, retrieveDatabaseCalls } = makeFakeClient({
+    pageId: 'transcript-page-3',
+    schema: { Name: 'title', Datum: 'date', Kurs: 'rich_text' },
+  });
+  const adapter = new NotionAdapter(client, 'db-xyz', undefined, 'db-meetings');
+
+  const input: PlaceTranscriptInput = {
+    course,
+    title: 'Vorlesung 7',
+    recordingDate: '2026-06-10',
+    model: 'whisper-large-v3',
+    durationSeconds: 3600,
+    markdown: 'Erster Absatz.',
+    alreadyWrittenLocalPath: '/tmp/irrelevant.md',
+  };
+
+  const result = await adapter.placeTranscript(input);
+
+  assert.deepEqual(retrieveDatabaseCalls, ['db-meetings']);
+  const properties = createPageCalls[0].properties;
+  assert.ok(properties.Name, 'Title-Property muss trotz Filterung erhalten bleiben');
+  assert.equal(properties.Modell, undefined, 'Modell ist nicht im Schema und muss gedroppt werden');
+  assert.equal(properties['Dauer (s)'], undefined, "'Dauer (s)' ist nicht im Schema und muss gedroppt werden");
+  assert.ok(properties.Datum, 'Datum ist im Schema und muss erhalten bleiben');
+
+  assert.ok(result.warnings, 'Ergebnis muss Warnings über gedroppte Properties enthalten');
+  assert.equal(result.warnings?.length, 2);
+  assert.ok(result.warnings?.some((w) => w.includes("'Modell'")));
+  assert.ok(result.warnings?.some((w) => w.includes("'Dauer (s)'")));
+});
+
+test('placeFile filtert Properties analog gegen das DB-Schema und meldet eine Warnung', async () => {
+  const { client, createPageCalls } = makeFakeClient({
+    pageId: 'file-page-9',
+    schema: { Name: 'title', Kurs: 'rich_text', Datum: 'date' },
+  });
+  const adapter = new NotionAdapter(client, 'db-files');
+
+  const input: PlaceFileInput = {
+    course,
+    sectionName: 'Woche 3',
+    filename: 'folien.pdf',
+    bytes: new TextEncoder().encode('hallo welt'),
+  };
+
+  const result = await adapter.placeFile(input);
+
+  const properties = createPageCalls[0].properties;
+  assert.equal(properties.Semester, undefined, 'Semester ist nicht im Schema und muss gedroppt werden');
+  assert.equal(properties.Sektion, undefined, 'Sektion ist nicht im Schema und muss gedroppt werden');
+  assert.equal(properties.Typ, undefined, "Typ ist nicht im Schema und muss gedroppt werden");
+  assert.ok(properties.Name);
+  assert.ok(properties.Kurs);
+
+  assert.equal(result.warnings?.length, 3);
+});
+
+test('placeTranscript sendet Properties ungefiltert, wenn der Schema-Abruf fehlschlägt (kein Datenverlust bei API-Timeout)', async () => {
+  const { client, createPageCalls } = makeFakeClient({
+    pageId: 'transcript-page-4',
+    schemaError: new Error('Notion API Timeout'),
+  });
+  const adapter = new NotionAdapter(client, 'db-xyz', undefined, 'db-meetings');
+
+  const input: PlaceTranscriptInput = {
+    course,
+    title: 'Vorlesung 8',
+    recordingDate: '2026-06-11',
+    model: 'whisper-large-v3',
+    durationSeconds: 1800,
+    markdown: 'Inhalt.',
+    alreadyWrittenLocalPath: '/tmp/irrelevant.md',
+  };
+
+  const result = await adapter.placeTranscript(input);
+
+  const properties = createPageCalls[0].properties;
+  // Fallback auf Title-Property 'Name', da die Schema-Erkennung denselben fehlgeschlagenen Abruf nutzt.
+  assert.ok(properties.Name, "Title-Property-Fallback 'Name' muss trotz Schema-Fehler gesetzt sein");
+  assert.deepEqual(properties.Modell, { rich_text: [{ text: { content: 'whisper-large-v3' } }] });
+  assert.deepEqual(properties['Dauer (s)'], { number: 1800 });
+
+  assert.equal(result.warnings?.length, 1);
+  assert.ok(result.warnings?.[0]?.includes('Schema-Abruf fehlgeschlagen'));
 });

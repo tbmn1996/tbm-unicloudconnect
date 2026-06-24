@@ -46,6 +46,13 @@ const MIGRATIONS: Readonly<Partial<Record<number, (db: AppDatabase) => void>>> =
       CREATE UNIQUE INDEX IF NOT EXISTS idx_output_refs_source ON output_refs(source_entity_type, source_entity_id, notion_database_id);
     `);
   },
+  4: (db) => {
+    // Erweitere transcript_jobs um das persistierte Notion-Push-Ergebnis (Migration 3→4)
+    db.exec(`
+      ALTER TABLE transcript_jobs ADD COLUMN notion_push_status TEXT CHECK (notion_push_status IN ('ok','warnings','failed','skipped'));
+      ALTER TABLE transcript_jobs ADD COLUMN notion_push_error TEXT;
+    `);
+  },
 };
 
 /**

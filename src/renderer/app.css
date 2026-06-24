@@ -40,7 +40,18 @@ input:focus { border-color: #0a84ff; box-shadow: 0 0 0 3px rgba(10,132,255,.13);
 .notice.success { color: #197447; border-color: rgba(48,164,108,.3); background: rgba(48,164,108,.08); }
 .notice.error { color: #a4362f; border-color: rgba(210,63,55,.28); background: rgba(210,63,55,.07); }
 .notice.purple { border-color: rgba(94,92,230,.25); background: rgba(94,92,230,.07); }
-.option-card { width: 100%; display: flex; gap: 12px; align-items: center; padding: 14px 16px; margin-bottom: 10px; border: 1px solid #dedee1; border-radius: 10px; background: #fff; text-align: left; cursor: pointer; }
+.option-card { width: 100%; display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; margin-bottom: 10px; border: 1px solid #dedee1; border-radius: 10px; background: #fff; text-align: left; cursor: pointer; }
+.option-card input[type="checkbox"],
+.option-card input[type="radio"],
+.option-card .radio {
+  margin-top: 3px;
+}
+.settings > .panel {
+  margin-bottom: 16px;
+}
+.settings > .panel:last-of-type {
+  margin-bottom: 0;
+}
 .option-card.selected { border-color: #0a84ff; background: rgba(10,132,255,.05); }
 .option-card.disabled { opacity: .5; }
 .option-card p { color: #86868b; margin: 3px 0 0; font-size: 12px; }
@@ -193,6 +204,25 @@ input:focus { border-color: #0a84ff; box-shadow: 0 0 0 3px rgba(10,132,255,.13);
 }
 .item-details .error-message {
   color: #d23f37;
+}
+.item-details .notion-push-failed {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(210, 63, 55, 0.12);
+  color: #d23f37;
+  font-weight: 600;
+  width: fit-content;
+}
+.item-details .notion-push-warning {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 149, 10, 0.14);
+  color: #9a6700;
+  width: fit-content;
 }
 .status-dot {
   width: 8px;

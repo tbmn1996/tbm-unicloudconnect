@@ -53,6 +53,23 @@ macOS-Keychain, LearnWeb-Core, Sync-Engine, Local-Library, lokale Transkription 
 - **SQLite für Electron:** `npm run rebuild:electron`
 - **SQLite für Node-Tests:** `npm run rebuild:node`
 
+## Live-Tests & Builds (verbindlich)
+
+`better-sqlite3` ist ein natives Modul mit zwei ABIs. Vor jedem Wechsel zwischen App und Tests neu binden:
+- **App starten/bauen:** `npm run rebuild:electron` (Electron-ABI).
+- **Tests/Integrationstests:** `npm run rebuild:node` **direkt vor** `npm test`. Nie Tests auf einem für Electron gebauten `better-sqlite3` laufen lassen (ABI-Mismatch → kryptische Fehler).
+
+Live-/Integrationstests immer gegen den **aktuellen** Stand, nie gegen stale `out/`:
+- `npm test` läuft über `tsx --test` direkt aus `src/` → automatisch aktueller Source.
+- Wer echtes App-Verhalten prüft: vorher `npm run build`, dann die frische App nutzen — nicht eine alte laufende Instanz.
+
+**Welche `state.sqlite` ist „live"?** Hängt vom Build ab:
+- Dev (`npm run dev`): `~/Library/Application Support/tbm-unicloudconnect/state.sqlite` (kleingeschrieben = package.json `name`).
+- Packaged: `~/Library/Application Support/TBM UniCloudConnect/state.sqlite` (= productName).
+- Maßgeblich: `UCC_DB_PATH` setzen, wenn ein bestimmter Pfad gemeint ist; Skripte/Tests priorisieren `UCC_DB_PATH`.
+
+Pre-Test-Checkliste: (1) `npm run rebuild:node`, (2) DB-Pfad via `UCC_DB_PATH` fixieren, (3) bei Keychain-Problemen im Testkontext `NOTION_TOKEN` setzen.
+
 ## Arbeitsregeln
 
 - Keine neuen Dependencies, Installationen, Loeschungen, Commits, Pushes oder Deployments ohne klare Freigabe.

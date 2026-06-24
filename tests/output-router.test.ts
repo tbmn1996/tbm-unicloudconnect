@@ -36,7 +36,13 @@ function makeTranscriptInput(): PlaceTranscriptInput {
 /** Fake-OutputTarget: zeichnet Aufrufe auf, antwortet mit fixem Result oder wirft optional. */
 function makeFakeTarget(
   kind: 'filesystem' | 'notion',
-  options: { throwOnFile?: Error; throwOnTranscript?: Error } = {},
+  options: {
+    throwOnFile?: Error;
+    throwOnTranscript?: Error;
+    /** Simuliert einen Adapter, der Properties gegen das DB-Schema gefiltert hat (Erfolg, aber mit Warnungen). */
+    fileWarnings?: string[];
+    transcriptWarnings?: string[];
+  } = {},
 ): OutputTarget & { placeFileCalls: PlaceFileInput[]; placeTranscriptCalls: PlaceTranscriptInput[] } {
   const placeFileCalls: PlaceFileInput[] = [];
   const placeTranscriptCalls: PlaceTranscriptInput[] = [];
@@ -54,6 +60,7 @@ function makeFakeTarget(
         sizeBytes: input.bytes.byteLength,
         filename: input.filename,
         ...(kind === 'filesystem' ? { relativePath: 'kurs/folie.pdf' } : { remoteRef: 'page-id-1' }),
+        ...(options.fileWarnings ? { warnings: options.fileWarnings } : {}),
       };
     },
     async placeTranscript(input: PlaceTranscriptInput): Promise<PlaceTranscriptResult> {
@@ -62,6 +69,7 @@ function makeFakeTarget(
       return {
         adapter: kind,
         ...(kind === 'filesystem' ? { relativePath: 'kurs/transkript.md' } : { remoteRef: 'page-id-2' }),
+        ...(options.transcriptWarnings ? { warnings: options.transcriptWarnings } : {}),
       };
     },
   };
@@ -86,6 +94,8 @@ test('placeFile: settings.get liefert null -> nur Filesystem-Adapter läuft, not
   assert.equal(result.notion, undefined);
   assert.deepEqual(result.warnings, []);
   assert.equal(result.filesystem.adapter, 'filesystem');
+  assert.equal(result.notionStatus, 'skipped');
+  assert.equal(result.notionError, undefined);
 });
 
 test('placeFile: settings.get liefert "filesystem" -> identisch zum null-Fall', async () => {
@@ -99,6 +109,7 @@ test('placeFile: settings.get liefert "filesystem" -> identisch zum null-Fall', 
   assert.equal(notion.placeFileCalls.length, 0);
   assert.equal(result.notion, undefined);
   assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'skipped');
 });
 
 test('placeFile: settings.get liefert "notion" -> beide Adapter laufen (Filesystem trotzdem Pflicht), notion-Ergebnis vorhanden', async () => {
@@ -113,6 +124,7 @@ test('placeFile: settings.get liefert "notion" -> beide Adapter laufen (Filesyst
   assert.ok(result.notion);
   assert.equal(result.notion?.adapter, 'notion');
   assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'ok');
 });
 
 test('placeFile: settings.get liefert "both" -> beide Adapter laufen, beide Ergebnisse vorhanden', async () => {
@@ -127,6 +139,21 @@ test('placeFile: settings.get liefert "both" -> beide Adapter laufen, beide Erge
   assert.ok(result.filesystem);
   assert.ok(result.notion);
   assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'ok');
+});
+
+test('placeFile: "both" mit Notion-Adapter-Warnings (z. B. gegen Schema gefilterte Property) -> notionStatus="warnings", Warnings werden gemerged', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const notion = makeFakeTarget('notion', { fileWarnings: ["Property 'Modell' existiert nicht in Ziel-DB und wurde übersprungen."] });
+  const router = new OutputRouter({ filesystem, notion }, makeSettings('both'));
+
+  const result = await router.placeFile(makeFileInput());
+
+  assert.ok(result.notion);
+  assert.equal(result.notionStatus, 'warnings');
+  assert.equal(result.notionError, undefined);
+  assert.equal(result.warnings.length, 1);
+  assert.equal(result.warnings[0], "Property 'Modell' existiert nicht in Ziel-DB und wurde übersprungen.");
 });
 
 test('placeFile: "both" mit Notion-Adapter-Error -> filesystem-Ergebnis bleibt korrekt, genau 1 warning, kein Throw', async () => {
@@ -141,6 +168,8 @@ test('placeFile: "both" mit Notion-Adapter-Error -> filesystem-Ergebnis bleibt k
   assert.equal(result.notion, undefined);
   assert.equal(result.warnings.length, 1);
   assert.equal(result.warnings[0], 'Notion-Push fehlgeschlagen: API down');
+  assert.equal(result.notionStatus, 'failed');
+  assert.equal(result.notionError, 'API down');
 });
 
 test('placeFile: "both" aber adapters.notion ist undefined -> kein Crash, Notion-Leg übersprungen, keine warnings', async () => {
@@ -152,6 +181,7 @@ test('placeFile: "both" aber adapters.notion ist undefined -> kein Crash, Notion
   assert.equal(filesystem.placeFileCalls.length, 1);
   assert.equal(result.notion, undefined);
   assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'skipped');
 });
 
 // --- placeTranscript ---
@@ -167,6 +197,7 @@ test('placeTranscript: settings.get liefert null -> nur Filesystem-Adapter läuf
   assert.equal(notion.placeTranscriptCalls.length, 0);
   assert.equal(result.notion, undefined);
   assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'skipped');
 });
 
 test('placeTranscript: settings.get liefert "both" -> beide Adapter laufen, beide Ergebnisse vorhanden', async () => {
@@ -181,6 +212,25 @@ test('placeTranscript: settings.get liefert "both" -> beide Adapter laufen, beid
   assert.ok(result.filesystem);
   assert.ok(result.notion);
   assert.deepEqual(result.warnings, []);
+  assert.equal(result.notionStatus, 'ok');
+});
+
+test('placeTranscript: "both" mit Notion-Adapter-Warnings (z. B. gegen Schema gefilterte Property) -> notionStatus="warnings"', async () => {
+  const filesystem = makeFakeTarget('filesystem');
+  const notion = makeFakeTarget('notion', {
+    transcriptWarnings: [
+      "Property 'Modell' existiert nicht in Ziel-DB und wurde übersprungen.",
+      "Property 'Dauer (s)' existiert nicht in Ziel-DB und wurde übersprungen.",
+    ],
+  });
+  const router = new OutputRouter({ filesystem, notion }, makeSettings('both'));
+
+  const result = await router.placeTranscript(makeTranscriptInput());
+
+  assert.ok(result.notion);
+  assert.equal(result.notionStatus, 'warnings');
+  assert.equal(result.notionError, undefined);
+  assert.equal(result.warnings.length, 2);
 });
 
 test('placeTranscript: "both" mit Notion-Adapter-Error -> filesystem-Ergebnis bleibt korrekt, genau 1 warning, kein Throw', async () => {
@@ -195,4 +245,6 @@ test('placeTranscript: "both" mit Notion-Adapter-Error -> filesystem-Ergebnis bl
   assert.equal(result.notion, undefined);
   assert.equal(result.warnings.length, 1);
   assert.equal(result.warnings[0], 'Notion-Push fehlgeschlagen: Timeout');
+  assert.equal(result.notionStatus, 'failed');
+  assert.equal(result.notionError, 'Timeout');
 });

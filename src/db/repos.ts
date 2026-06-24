@@ -485,6 +485,9 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
   const resetRetryStmt = db.prepare(
     `UPDATE transcript_jobs SET retry_count = 0 WHERE id = ?`,
   );
+  const setNotionPushResultStmt = db.prepare(
+    `UPDATE transcript_jobs SET notion_push_status = @status, notion_push_error = @error WHERE id = @id`,
+  );
   const enqueueFromCandidateStmt = db.prepare(
     `INSERT INTO transcript_jobs
        (course_id, activity_cmid, source_url, status, recording_key, title, source_type, media_url,
@@ -525,6 +528,9 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
     sectionIndex: (r.section_index as number | null) ?? null,
     recordingDate: (r.recording_date as string | null) ?? null,
     retryCount: (r.retry_count as number | null) ?? 0,
+    // Schema-v4-Felder (Spalten kommen mit MIGRATIONS[4]; bis dahin null).
+    notionPushStatus: (r.notion_push_status as TranscriptJob['notionPushStatus']) ?? null,
+    notionPushError: (r.notion_push_error as string | null) ?? null,
   });
 
   return {
@@ -627,6 +633,10 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
     },
     resetRetry(id: number): void {
       resetRetryStmt.run(id);
+    },
+    /** Persistiert das Ergebnis des letzten Notion-Push-Versuchs (kein Silent Fail über Neustart hinweg). */
+    setNotionPushResult(id: number, status: TranscriptJob['notionPushStatus'], error: string | null): void {
+      setNotionPushResultStmt.run({ id, status, error });
     },
     /** Crash-Recovery: alle unterbrochenen Jobs auf 'pending' zurücksetzen. */
     recoverInterrupted(): void {

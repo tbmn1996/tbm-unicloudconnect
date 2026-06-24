@@ -33,6 +33,8 @@ export interface PlaceFileResult {
   hash: string;
   sizeBytes: number;
   filename: string;
+  /** Klartext-Warnungen (z. B. gegen das DB-Schema gefilterte Properties), nur Notion-Adapter. */
+  warnings?: string[];
 }
 
 export interface PlaceTranscriptInput {
@@ -50,6 +52,8 @@ export interface PlaceTranscriptResult {
   adapter: 'filesystem' | 'notion';
   relativePath?: string;
   remoteRef?: string;
+  /** Klartext-Warnungen (z. B. gegen das DB-Schema gefilterte Properties), nur Notion-Adapter. */
+  warnings?: string[];
 }
 
 export interface OutputTarget {
@@ -65,3 +69,5 @@ export interface OutputTarget {
  * (siehe FUTURE_OUTPUT_ADAPTERS.md §4.3) — eine Stelle, kein Drift-Risiko.
  */
 export const OUTPUT_NOTION_DATABASE_ID_SETTING_KEY = 'output.notion.lw_db_id';
+export const OUTPUT_NOTION_COURSES_DATABASE_ID_SETTING_KEY = 'output.notion.courses_db_id';
+export const OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY = 'output.notion.meeting_db_id';

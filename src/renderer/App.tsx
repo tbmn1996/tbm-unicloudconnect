@@ -931,6 +931,16 @@ function TranscriptionPanel(props: {
                     <div className="item-details">
                       <strong>{job.title ?? `Job ${job.id}`}</strong>
                       <small>{job.sectionName ?? 'Ohne Abschnitt'} · Abgeschlossen · {job.model ?? 'Modell unbekannt'}</small>
+                      {job.notionPushStatus === 'failed' && (
+                        <small className="notion-push-failed">
+                          ⚠ Notion: nicht gepusht — {job.notionPushError ?? 'Unbekannter Fehler'}
+                        </small>
+                      )}
+                      {job.notionPushStatus === 'warnings' && (
+                        <small className="notion-push-warning">
+                          Notion: gepusht, Properties übersprungen — {job.notionPushError ?? 'Details unbekannt'}
+                        </small>
+                      )}
                     </div>
                   </div>
                   <div className="item-actions">

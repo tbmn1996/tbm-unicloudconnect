@@ -238,6 +238,11 @@ export interface TranscriptJob {
   recordingDate: string | null;
   /** Anzahl der automatischen Wiederholversuche. */
   retryCount: number;
+  // --- Schema-v4-Erweiterung (Migration MIGRATIONS[4]) ---
+  /** Ergebnis des letzten Notion-Push-Versuchs; null = noch nie versucht. */
+  notionPushStatus: 'ok' | 'warnings' | 'failed' | 'skipped' | null;
+  /** Klartext-Meldung bei notionPushStatus 'warnings'/'failed', sonst null. */
+  notionPushError: string | null;
 }
 
 export interface SyncRun {
@@ -347,6 +352,10 @@ export interface NotionConfigState {
   workspaceName?: string | null;
   /** Hinterlegte Ziel-Datenbank-ID (settings-Key `output.notion.lw_db_id`). */
   selectedDbId?: string | null;
+  /** Hinterlegte Ziel-Datenbank-ID für Kurse (settings-Key `output.notion.courses_db_id`). */
+  selectedCoursesDbId?: string | null;
+  /** Hinterlegte Ziel-Datenbank-ID für Meetings/Transkripte (settings-Key `output.notion.meeting_db_id`). */
+  selectedMeetingDbId?: string | null;
   /** Aktueller Ausgabe-Modus; fehlt der Settings-Key, gilt `filesystem`. */
   adapterMode: OutputAdapterMode;
 }

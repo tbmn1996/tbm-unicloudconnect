@@ -30,16 +30,28 @@ export interface OutputRouterSettings {
   get(key: string): string | null;
 }
 
+/**
+ * Differenzierter Notion-Push-Status pro Aufruf (statt nur "Exception oder
+ * nicht"): 'ok' = Seite + alle Properties; 'warnings' = Seite erstellt, aber
+ * Properties gegen das DB-Schema gefiltert; 'failed' = keine Seite
+ * (Exception); 'skipped' = Notion-Leg nicht aktiv/konfiguriert.
+ */
+export type NotionPushStatus = 'ok' | 'warnings' | 'failed' | 'skipped';
+
 export interface RouterPlaceFileResult {
   filesystem: PlaceFileResult;
   notion?: PlaceFileResult;
   warnings: string[];
+  notionStatus: NotionPushStatus;
+  notionError?: string;
 }
 
 export interface RouterPlaceTranscriptResult {
   filesystem: PlaceTranscriptResult;
   notion?: PlaceTranscriptResult;
   warnings: string[];
+  notionStatus: NotionPushStatus;
+  notionError?: string;
 }
 
 export class OutputRouter {
@@ -57,27 +69,47 @@ export class OutputRouter {
     const filesystem = await this.adapters.filesystem.placeFile(input);
     const warnings: string[] = [];
     let notion: PlaceFileResult | undefined;
+    let notionStatus: NotionPushStatus = 'skipped';
+    let notionError: string | undefined;
     if (this.notionActive()) {
       try {
         notion = await this.adapters.notion!.placeFile(input);
+        if (notion.warnings && notion.warnings.length > 0) {
+          warnings.push(...notion.warnings);
+          notionStatus = 'warnings';
+        } else {
+          notionStatus = 'ok';
+        }
       } catch (err) {
-        warnings.push(`Notion-Push fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}`);
+        notionError = err instanceof Error ? err.message : String(err);
+        warnings.push(`Notion-Push fehlgeschlagen: ${notionError}`);
+        notionStatus = 'failed';
       }
     }
-    return { filesystem, notion, warnings };
+    return { filesystem, notion, warnings, notionStatus, ...(notionError !== undefined ? { notionError } : {}) };
   }
 
   async placeTranscript(input: PlaceTranscriptInput): Promise<RouterPlaceTranscriptResult> {
     const filesystem = await this.adapters.filesystem.placeTranscript(input);
     const warnings: string[] = [];
     let notion: PlaceTranscriptResult | undefined;
+    let notionStatus: NotionPushStatus = 'skipped';
+    let notionError: string | undefined;
     if (this.notionActive()) {
       try {
         notion = await this.adapters.notion!.placeTranscript(input);
+        if (notion.warnings && notion.warnings.length > 0) {
+          warnings.push(...notion.warnings);
+          notionStatus = 'warnings';
+        } else {
+          notionStatus = 'ok';
+        }
       } catch (err) {
-        warnings.push(`Notion-Push fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}`);
+        notionError = err instanceof Error ? err.message : String(err);
+        warnings.push(`Notion-Push fehlgeschlagen: ${notionError}`);
+        notionStatus = 'failed';
       }
     }
-    return { filesystem, notion, warnings };
+    return { filesystem, notion, warnings, notionStatus, ...(notionError !== undefined ? { notionError } : {}) };
   }
 }

@@ -234,6 +234,102 @@ test('TranscriptionManager schreibt output_refs, wenn der Output-Router einen No
     assert.equal(job.status, 'done');
     const ref = f.repos.outputRefs.getBySource('transcript_job', job.id, 'db-xyz');
     assert.equal(ref?.notionPageId, 'transcript-page-1');
+    assert.equal(job.notionPushStatus, 'ok');
+    assert.equal(job.notionPushError, null);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('TranscriptionManager persistiert notion_push_status="warnings" + notion_push_error, wenn der Notion-Adapter Warnungen meldet (Notion-Push-Fix)', async () => {
+  const f = fixture();
+  try {
+    f.repos.settings.set('output.adapter', 'both');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({ adapter: 'notion', duplicate: false, remoteRef: 'irrelevant', hash: '', sizeBytes: 0, filename: '' }),
+      placeTranscript: async () => ({
+        adapter: 'notion',
+        remoteRef: 'transcript-page-warn',
+        warnings: ["Property 'Modell' existiert nicht in Ziel-DB und wurde übersprungen."],
+      }),
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(f.root), notion: fakeNotionAdapter },
+      f.repos.settings,
+    );
+
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => f.root,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+      outputRouterFactory: async () => router,
+      runWorker: async (request, onProgress) => {
+        onProgress({ phase: 'transcribing', done: 50, total: 100 });
+        mkdirSync(dirname(request.output_path), { recursive: true });
+        writeFileSync(request.output_path, '# Transkript', { encoding: 'utf8', flag: 'w' });
+        return { transcriptPath: request.output_path, model: 'mlx-whisper:small', durationSeconds: 61 };
+      },
+    });
+    const candidates = await manager.scanRecordings();
+    manager.enqueue([candidates[0]!.recordingKey]);
+    await manager.start();
+
+    const job = manager.getJobs()[0]!;
+    assert.equal(job.status, 'done', 'Notion-Warnungen dürfen den lokal erfolgreichen Job nicht als fehlgeschlagen markieren');
+    assert.equal(job.notionPushStatus, 'warnings');
+    assert.match(job.notionPushError ?? '', /Modell/);
+    const ref = f.repos.outputRefs.getBySource('transcript_job', job.id, 'db-xyz');
+    assert.equal(ref?.notionPageId, 'transcript-page-warn', 'Bei warnings wurde trotzdem eine Seite erstellt -> output_refs muss erfasst werden');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('TranscriptionManager persistiert notion_push_status="failed" + notion_push_error, ohne den lokal erfolgreichen Job fehlschlagen zu lassen', async () => {
+  const f = fixture();
+  try {
+    f.repos.settings.set('output.adapter', 'both');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({ adapter: 'notion', duplicate: false, remoteRef: 'irrelevant', hash: '', sizeBytes: 0, filename: '' }),
+      placeTranscript: async () => { throw new Error('Notion API Timeout'); },
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(f.root), notion: fakeNotionAdapter },
+      f.repos.settings,
+    );
+
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => f.root,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+      outputRouterFactory: async () => router,
+      runWorker: async (request, onProgress) => {
+        onProgress({ phase: 'transcribing', done: 50, total: 100 });
+        mkdirSync(dirname(request.output_path), { recursive: true });
+        writeFileSync(request.output_path, '# Transkript', { encoding: 'utf8', flag: 'w' });
+        return { transcriptPath: request.output_path, model: 'mlx-whisper:small', durationSeconds: 61 };
+      },
+    });
+    const candidates = await manager.scanRecordings();
+    manager.enqueue([candidates[0]!.recordingKey]);
+    await manager.start();
+
+    const job = manager.getJobs()[0]!;
+    assert.equal(job.status, 'done', 'Ein gescheiterter Notion-Push darf den lokal erfolgreichen Job nicht als fehlgeschlagen markieren');
+    assert.equal(job.notionPushStatus, 'failed');
+    assert.match(job.notionPushError ?? '', /Notion API Timeout/);
+    const ref = f.repos.outputRefs.getBySource('transcript_job', job.id, 'db-xyz');
+    assert.equal(ref, null, 'Bei failed darf keine output_refs-Zeile entstehen');
   } finally {
     f.cleanup();
   }

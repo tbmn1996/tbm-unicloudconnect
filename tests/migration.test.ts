@@ -1,9 +1,11 @@
 /**
- * Tests für Schema-Migration v1 → v2.
+ * Tests für Schema-Migration v1 → v4.
  *
  * Prüft:
- * - Neuinstallation legt direkt v2 mit allen Spalten an
+ * - Neuinstallation legt direkt die aktuelle Version mit allen Spalten an
  * - Migration v1 → v2 via ALTER TABLE lädt die neuen Spalten + Index
+ * - Migration v2 → v3 legt output_refs an
+ * - Migration v3 → v4 lädt notion_push_status/notion_push_error (Notion-Push-Fix)
  * - claimNext() liefert aufeinanderfolgend verschiedene Job-IDs
  * - enqueueFromCandidate() ist idempotent (doppelt derselbe recording_key = nur ein Job)
  * - recoverInterrupted() setzt unterbrochene Jobs auf 'pending'
@@ -102,6 +104,28 @@ function createV2Database(path: string): Database.Database {
   return db;
 }
 
+/**
+ * Erstelle eine v3-Datenbank: erstelle v2 und wende die v3-Migrationsänderung
+ * (output_refs-Tabelle) an, setze PRAGMA user_version = 3.
+ */
+function createV3Database(path: string): Database.Database {
+  const db = createV2Database(path);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS output_refs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_entity_type TEXT NOT NULL CHECK (source_entity_type IN ('file_asset', 'transcript_job')),
+      source_entity_id INTEGER NOT NULL,
+      notion_database_id TEXT NOT NULL,
+      notion_page_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_output_refs_source ON output_refs(source_entity_type, source_entity_id, notion_database_id);
+  `);
+  db.pragma('user_version = 3');
+  return db;
+}
+
 test('Migration v1→v2: simulierte v1-DB wird auf v2 gehoben', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
   const path = join(dir, 'state.sqlite');
@@ -140,13 +164,13 @@ test('Migration v1→v2: simulierte v1-DB wird auf v2 gehoben', () => {
   }
 });
 
-test('Neuinstallation legt direkt v3 mit allen Spalten an', () => {
+test('Neuinstallation legt direkt v4 mit allen Spalten an', () => {
   const db = openDatabase(':memory:');
   try {
-    // Prüfe: user_version ist 3
+    // Prüfe: user_version ist die aktuelle Schema-Version
     const version = db.pragma('user_version', { simple: true });
     assert.equal(version, SCHEMA_VERSION, `user_version sollte ${SCHEMA_VERSION} sein`);
-    assert.equal(SCHEMA_VERSION, 3);
+    assert.equal(SCHEMA_VERSION, 4);
 
     // Prüfe: alle v2-Spalten sind in der neu erstellten Tabelle vorhanden
     const tableInfo = db.prepare("PRAGMA table_info(transcript_jobs)").all() as Array<{ name: string }>;
@@ -161,6 +185,8 @@ test('Neuinstallation legt direkt v3 mit allen Spalten an', () => {
     assert.ok(columnNames.includes('section_index'), 'section_index sollte direkt in v2 vorhanden sein');
     assert.ok(columnNames.includes('recording_date'), 'recording_date sollte direkt in v2 vorhanden sein');
     assert.ok(columnNames.includes('retry_count'), 'retry_count sollte direkt in v2 vorhanden sein');
+    assert.ok(columnNames.includes('notion_push_status'), 'notion_push_status sollte direkt in v4 vorhanden sein');
+    assert.ok(columnNames.includes('notion_push_error'), 'notion_push_error sollte direkt in v4 vorhanden sein');
 
     // Prüfe: der UNIQUE INDEX existiert
     const indexes = db.prepare(
@@ -183,7 +209,7 @@ test('Neuinstallation legt direkt v3 mit allen Spalten an', () => {
   }
 });
 
-test('Migration v2→v3: simulierte v2-DB wird auf v3 gehoben', () => {
+test('Migration v2→v4: simulierte v2-DB nimmt v3 (output_refs) und v4 (notion_push) mit', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
   const path = join(dir, 'state.sqlite');
   const v2 = createV2Database(path);
@@ -192,7 +218,7 @@ test('Migration v2→v3: simulierte v2-DB wird auf v3 gehoben', () => {
 
   const db = openDatabase(path);
   try {
-    // Prüfe: die neue Tabelle output_refs ist vorhanden
+    // Prüfe: die neue Tabelle output_refs (Migration 2→3) ist vorhanden
     const tableInfo = db.prepare("PRAGMA table_info(output_refs)").all() as Array<{ name: string }>;
     const columnNames = tableInfo.map((c) => c.name);
 
@@ -204,15 +230,49 @@ test('Migration v2→v3: simulierte v2-DB wird auf v3 gehoben', () => {
     assert.ok(columnNames.includes('created_at'), 'created_at sollte vorhanden sein');
     assert.ok(columnNames.includes('updated_at'), 'updated_at sollte vorhanden sein');
 
-    // Prüfe: user_version ist jetzt 3
+    // Prüfe: die v4-Spalten (Migration 3→4) sind ebenfalls vorhanden — openDatabase()
+    // migriert von v2 immer bis zur aktuellen SCHEMA_VERSION durch, nie nur bis v3.
+    const jobColumns = db.prepare("PRAGMA table_info(transcript_jobs)").all() as Array<{ name: string }>;
+    const jobColumnNames = jobColumns.map((c) => c.name);
+    assert.ok(jobColumnNames.includes('notion_push_status'), 'notion_push_status sollte vorhanden sein');
+    assert.ok(jobColumnNames.includes('notion_push_error'), 'notion_push_error sollte vorhanden sein');
+
+    // Prüfe: user_version ist jetzt die aktuelle Schema-Version
     const versionAfter = db.pragma('user_version', { simple: true });
-    assert.equal(versionAfter, 3);
+    assert.equal(versionAfter, SCHEMA_VERSION);
+    assert.equal(versionAfter, 4);
 
     // Prüfe: der UNIQUE INDEX existiert
     const indexes = db.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_output_refs_source'",
     ).all() as Array<{ name: string }>;
     assert.equal(indexes.length, 1, 'UNIQUE INDEX idx_output_refs_source sollte existieren');
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Migration v3→v4: simulierte v3-DB wird auf v4 gehoben (Notion-Push-Fix)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ucc-migration-'));
+  const path = join(dir, 'state.sqlite');
+  const v3 = createV3Database(path);
+  assert.equal(v3.pragma('user_version', { simple: true }), 3);
+  v3.close();
+
+  const db = openDatabase(path);
+  try {
+    // Prüfe: die neuen Spalten für das persistierte Notion-Push-Ergebnis sind vorhanden
+    const tableInfo = db.prepare("PRAGMA table_info(transcript_jobs)").all() as Array<{ name: string }>;
+    const columnNames = tableInfo.map((c) => c.name);
+
+    assert.ok(columnNames.includes('notion_push_status'), 'notion_push_status sollte vorhanden sein');
+    assert.ok(columnNames.includes('notion_push_error'), 'notion_push_error sollte vorhanden sein');
+
+    // Prüfe: user_version ist jetzt 4
+    const versionAfter = db.pragma('user_version', { simple: true });
+    assert.equal(versionAfter, SCHEMA_VERSION);
+    assert.equal(versionAfter, 4);
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });

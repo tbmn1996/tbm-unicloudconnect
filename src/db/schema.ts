@@ -12,7 +12,7 @@
  */
 
 /** Aktuelle Schema-Version; wird in PRAGMA user_version geschrieben. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = `
 -- profiles: Nutzerprofile (i. d. R. genau eines im MVP)
@@ -100,7 +100,10 @@ CREATE TABLE IF NOT EXISTS transcript_jobs (
   section_name TEXT,
   section_index INTEGER,
   recording_date TEXT,
-  retry_count INTEGER NOT NULL DEFAULT 0
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  -- Schema-v4-Erweiterung: persistiertes Notion-Push-Ergebnis (kein Silent Fail)
+  notion_push_status TEXT CHECK (notion_push_status IN ('ok','warnings','failed','skipped')),
+  notion_push_error TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_jobs_recording_key ON transcript_jobs(recording_key) WHERE recording_key IS NOT NULL;

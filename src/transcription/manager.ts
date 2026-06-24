@@ -8,10 +8,14 @@ import type { Repos } from '../db/repos';
 import { LearnwebClient } from '../learnweb-core/client';
 import type { LearnwebSession } from '../learnweb-core/session';
 import { sanitizePathSegment } from '../local-library/paths';
+import { appendLog } from '../main/logger';
 import { FilesystemAdapter } from '../output-adapters/filesystem-adapter';
 import { createNotionAdapter } from '../output-adapters/notion-adapter';
 import { OutputRouter } from '../output-adapters/router';
-import { OUTPUT_NOTION_DATABASE_ID_SETTING_KEY } from '../output-adapters/types';
+import {
+  OUTPUT_NOTION_DATABASE_ID_SETTING_KEY,
+  OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY,
+} from '../output-adapters/types';
 import type {
   Course,
   RecordingCandidate,
@@ -402,9 +406,18 @@ export class TranscriptionManager {
         markdown,
         alreadyWrittenLocalPath: result.transcriptPath,
       });
-      if (placed.notion?.remoteRef) {
-        const notionDatabaseId = this.options.repos.settings.get(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY);
-        if (notionDatabaseId) {
+      if (placed.warnings && placed.warnings.length > 0) {
+        for (const warning of placed.warnings) {
+          console.warn(`[transcription] Output-Router-Push Warnung für Job ${job.id}: ${warning}`);
+          appendLog('WARN', `[transcription] Job ${job.id}: ${warning}`);
+        }
+      }
+      // 'ok' UND 'warnings' bedeuten: eine Seite wurde erstellt -> output_refs
+      // erfassen (sonst Duplikate bei Retries). Nur 'failed' lässt sie aus.
+      if (placed.notionStatus === 'ok' || placed.notionStatus === 'warnings') {
+        const notionDatabaseId = this.options.repos.settings.get(OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY)
+          || this.options.repos.settings.get(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY);
+        if (notionDatabaseId && placed.notion?.remoteRef) {
           this.options.repos.outputRefs.insert({
             sourceEntityType: 'transcript_job',
             sourceEntityId: job.id,
@@ -413,8 +426,17 @@ export class TranscriptionManager {
           });
         }
       }
+      const notionPushError = placed.notionStatus === 'failed'
+        ? (placed.notionError ?? null)
+        : placed.notionStatus === 'warnings'
+          ? placed.warnings.join('; ')
+          : null;
+      this.options.repos.transcriptJobs.setNotionPushResult(job.id, placed.notionStatus, notionPushError);
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       console.error(`[transcription] Output-Router-Push für Job ${job.id} fehlgeschlagen:`, error);
+      appendLog('ERROR', `[transcription] Output-Router-Push für Job ${job.id} fehlgeschlagen: ${message}`);
+      this.options.repos.transcriptJobs.setNotionPushResult(job.id, 'failed', message);
     }
   }
 
