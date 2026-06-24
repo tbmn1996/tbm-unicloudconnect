@@ -73,6 +73,7 @@ Pre-Test-Checkliste: (1) `npm run rebuild:node`, (2) DB-Pfad via `UCC_DB_PATH` f
 ## Arbeitsregeln
 
 - Keine neuen Dependencies, Installationen, Loeschungen, Commits, Pushes oder Deployments ohne klare Freigabe.
+- Nach jedem Push auf GitHub muss eine Minute später kontrolliert werden (z. B. via API oder CLI), ob der CI-Workflow auf GitHub Actions reibungslos durchgelaufen ist.
 - Bestehende Patterns und die kleinste tragfaehige Aenderung bevorzugen.
 - Tests nach Risiko und betroffener Flaeche auswaehlen.
 - CLI-Ausgaben begrenzen und keine kompletten Logs oder grossen JSON-Antworten ausgeben.
