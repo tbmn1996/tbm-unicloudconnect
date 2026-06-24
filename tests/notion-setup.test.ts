@@ -5,6 +5,8 @@ import {
   searchDatabases,
   getConfig,
   setDatabase,
+  setCoursesDatabase,
+  setMeetingDatabase,
   setOutputMode,
   NOTION_TOKEN_ACCOUNT,
   NOTION_PROVIDER,
@@ -15,7 +17,11 @@ import {
   type NotionClientLike,
 } from '../src/main/notion-setup';
 import { NotionAuthError } from '../src/notion-core/errors';
-import { OUTPUT_NOTION_DATABASE_ID_SETTING_KEY } from '../src/output-adapters/types';
+import {
+  OUTPUT_NOTION_DATABASE_ID_SETTING_KEY,
+  OUTPUT_NOTION_COURSES_DATABASE_ID_SETTING_KEY,
+  OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY,
+} from '../src/output-adapters/types';
 
 /**
  * Baut ein frisches In-Memory-Repos-Mock (Duck-Typing, siehe NotionSetupRepos).
@@ -136,6 +142,33 @@ test('verifyAndStoreToken: 401 (NotionAuthError) speichert nichts und liefert ok
   assert.ok(typeof result.message === 'string' && result.message.length > 0);
 
   // Weder Keychain noch Repos-Credential dürfen bei einem Auth-Fehler beschrieben werden.
+  assert.equal(setCredentialCalls.length, 0);
+  assert.equal(credentialSetCalls.length, 0);
+});
+
+test('verifyAndStoreToken: generischer Fehler (Netzwerk/Keychain, kein NotionAuthError) speichert nichts und leakt keinen Originalfehler', async () => {
+  const { repos, credentialSetCalls } = createMockRepos();
+  const { deps, setCredentialCalls } = createSpyDeps({
+    createClient: () => ({
+      getUser: async () => {
+        // Simuliert z.B. einen Netzwerk- oder Keychain-Fehler, der versehentlich
+        // sensible Daten (Token-Fragment) in der Fehlermeldung tragen könnte.
+        throw new Error('ECONNREFUSED 127.0.0.1:443 secret_geheimes-token');
+      },
+      search: async () => ({ results: [] }),
+    }),
+  });
+
+  const result = await verifyAndStoreToken('beliebiges-token', repos, deps);
+
+  assert.equal(result.ok, false);
+  assert.ok(typeof result.message === 'string' && result.message.length > 0);
+
+  // Die generische Fehlermeldung darf den Originalfehler nicht durchsickern lassen.
+  assert.ok(!result.message?.includes('ECONNREFUSED'));
+  assert.ok(!result.message?.includes('secret_geheimes-token'));
+
+  // Wie beim Auth-Fehler: weder Keychain noch Repos-Credential dürfen beschrieben werden.
   assert.equal(setCredentialCalls.length, 0);
   assert.equal(credentialSetCalls.length, 0);
 });
@@ -280,6 +313,8 @@ test('getConfig: liefert verbundenen Zustand mit selectedDbId und adapterMode "b
     connected: true,
     workspaceName: 'Mein Workspace',
     selectedDbId: 'db-xyz',
+    selectedCoursesDbId: null,
+    selectedMeetingDbId: null,
     adapterMode: 'both',
   });
 });
@@ -331,4 +366,52 @@ test('setDatabase: gültige ID schreibt den Settings-Key (getrimmt)', () => {
   const { repos } = createMockRepos();
   setDatabase('  db-abc123  ', repos);
   assert.equal(repos.settings.get(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY), 'db-abc123');
+});
+
+// ---------------------------------------------------------------------------
+// setCoursesDatabase
+// ---------------------------------------------------------------------------
+
+test('setCoursesDatabase: leerer String oder null setzt leeren String', () => {
+  const { repos } = createMockRepos();
+  setCoursesDatabase('', repos);
+  assert.equal(repos.settings.get(OUTPUT_NOTION_COURSES_DATABASE_ID_SETTING_KEY), '');
+  setCoursesDatabase(null, repos);
+  assert.equal(repos.settings.get(OUTPUT_NOTION_COURSES_DATABASE_ID_SETTING_KEY), '');
+});
+
+test('setCoursesDatabase: ungültige ID-Typen werfen Error', () => {
+  const { repos } = createMockRepos();
+  assert.throws(() => setCoursesDatabase(123, repos));
+  assert.throws(() => setCoursesDatabase({}, repos));
+});
+
+test('setCoursesDatabase: gültige ID schreibt den Settings-Key (getrimmt)', () => {
+  const { repos } = createMockRepos();
+  setCoursesDatabase('  db-courses123  ', repos);
+  assert.equal(repos.settings.get(OUTPUT_NOTION_COURSES_DATABASE_ID_SETTING_KEY), 'db-courses123');
+});
+
+// ---------------------------------------------------------------------------
+// setMeetingDatabase
+// ---------------------------------------------------------------------------
+
+test('setMeetingDatabase: leerer String oder null setzt leeren String', () => {
+  const { repos } = createMockRepos();
+  setMeetingDatabase('', repos);
+  assert.equal(repos.settings.get(OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY), '');
+  setMeetingDatabase(null, repos);
+  assert.equal(repos.settings.get(OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY), '');
+});
+
+test('setMeetingDatabase: ungültige ID-Typen werfen Error', () => {
+  const { repos } = createMockRepos();
+  assert.throws(() => setMeetingDatabase(123, repos));
+  assert.throws(() => setMeetingDatabase({}, repos));
+});
+
+test('setMeetingDatabase: gültige ID schreibt den Settings-Key (getrimmt)', () => {
+  const { repos } = createMockRepos();
+  setMeetingDatabase('  db-meeting123  ', repos);
+  assert.equal(repos.settings.get(OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY), 'db-meeting123');
 });

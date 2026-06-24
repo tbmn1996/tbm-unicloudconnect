@@ -138,6 +138,12 @@ export function registerIpcHandlers(runtime: AppRuntime): void {
   ipcMain.handle(IPC.setNotionDatabase, (_event, input: { databaseId: string }) => {
     notionSetup.setDatabase(input?.databaseId, runtime.repos);
   });
+  ipcMain.handle(IPC.setNotionCoursesDatabase, (_event, input: { databaseId: string | null }) => {
+    notionSetup.setCoursesDatabase(input?.databaseId, runtime.repos);
+  });
+  ipcMain.handle(IPC.setNotionMeetingDatabase, (_event, input: { databaseId: string | null }) => {
+    notionSetup.setMeetingDatabase(input?.databaseId, runtime.repos);
+  });
   ipcMain.handle(IPC.setNotionOutputMode, (_event, input: { mode: OutputAdapterMode }) => {
     notionSetup.setOutputMode(input?.mode, runtime.repos);
   });

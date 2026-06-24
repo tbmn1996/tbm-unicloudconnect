@@ -23,7 +23,11 @@ import {
 } from '../keychain/keychain';
 import { NotionClient } from '../notion-core/client';
 import { NotionAuthError } from '../notion-core/errors';
-import { OUTPUT_NOTION_DATABASE_ID_SETTING_KEY } from '../output-adapters/types';
+import {
+  OUTPUT_NOTION_DATABASE_ID_SETTING_KEY,
+  OUTPUT_NOTION_COURSES_DATABASE_ID_SETTING_KEY,
+  OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY,
+} from '../output-adapters/types';
 import type { NotionConfigState, NotionDatabaseSummary, OutputAdapterMode } from '../shared/domain';
 
 /** Keychain-Account des Notion-Tokens (vom Output-Adapter erwartet). */
@@ -218,6 +222,8 @@ export async function getConfig(repos: NotionSetupRepos, deps?: NotionSetupDeps)
     connected,
     workspaceName: repos.settings.get(NOTION_WORKSPACE_NAME_SETTING_KEY),
     selectedDbId: repos.settings.get(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY),
+    selectedCoursesDbId: repos.settings.get(OUTPUT_NOTION_COURSES_DATABASE_ID_SETTING_KEY),
+    selectedMeetingDbId: repos.settings.get(OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY),
     adapterMode: normalizeAdapterMode(repos.settings.get(OUTPUT_ADAPTER_SETTING_KEY)),
   };
 }
@@ -228,6 +234,30 @@ export function setDatabase(databaseId: unknown, repos: NotionSetupRepos): void 
     throw new Error('Datenbank-ID ist ungültig.');
   }
   repos.settings.set(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY, databaseId.trim());
+}
+
+/** Hinterlegt die Ziel-Datenbank-ID für Kurse (settings-Key `output.notion.courses_db_id`). */
+export function setCoursesDatabase(databaseId: unknown, repos: NotionSetupRepos): void {
+  if (databaseId === null || databaseId === '') {
+    repos.settings.set(OUTPUT_NOTION_COURSES_DATABASE_ID_SETTING_KEY, '');
+    return;
+  }
+  if (typeof databaseId !== 'string' || databaseId.trim().length === 0 || databaseId.length > 256) {
+    throw new Error('Datenbank-ID ist ungültig.');
+  }
+  repos.settings.set(OUTPUT_NOTION_COURSES_DATABASE_ID_SETTING_KEY, databaseId.trim());
+}
+
+/** Hinterlegt die Ziel-Datenbank-ID für Meetings/Transkripte (settings-Key `output.notion.meeting_db_id`). */
+export function setMeetingDatabase(databaseId: unknown, repos: NotionSetupRepos): void {
+  if (databaseId === null || databaseId === '') {
+    repos.settings.set(OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY, '');
+    return;
+  }
+  if (typeof databaseId !== 'string' || databaseId.trim().length === 0 || databaseId.length > 256) {
+    throw new Error('Datenbank-ID ist ungültig.');
+  }
+  repos.settings.set(OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY, databaseId.trim());
 }
 
 /** Setzt den Ausgabe-Modus (settings-Key `output.adapter`). */

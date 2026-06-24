@@ -81,6 +81,8 @@ export const IPC = {
   searchNotionDatabases: 'notion:search-databases',
   getNotionConfig: 'notion:get-config',
   setNotionDatabase: 'notion:set-database',
+  setNotionCoursesDatabase: 'notion:set-courses-database',
+  setNotionMeetingDatabase: 'notion:set-meeting-database',
   setNotionOutputMode: 'notion:set-output-mode',
   // Events Main → Renderer
   evtSyncStatus: 'evt:syncStatus',
@@ -159,9 +161,9 @@ export interface UniCloudApi {
 
   // --- Notion-Anbindung (Issue #27, Part 4) ---
   /**
-   * Prüft ein Notion-Integration-Token (GET /users/me). Bei Erfolg wird das
-   * Token in der macOS Keychain abgelegt (nie an den Renderer zurückgegeben).
-   */
+    * Prüft ein Notion-Integration-Token (GET /users/me). Bei Erfolg wird das
+    * Token in der macOS Keychain abgelegt (nie an den Renderer zurückgegeben).
+    */
   verifyNotionToken(input: { token: string }): Promise<{ ok: boolean; workspaceName?: string; message?: string }>;
   /** Inkrementelle Suche nach Notion-Datenbanken (nutzt das gespeicherte Token). */
   searchNotionDatabases(input: { query: string }): Promise<NotionDatabaseSummary[]>;
@@ -169,6 +171,10 @@ export interface UniCloudApi {
   getNotionConfig(): Promise<NotionConfigState>;
   /** Hinterlegt die Ziel-Datenbank-ID (settings-Key `output.notion.lw_db_id`). */
   setNotionDatabase(input: { databaseId: string }): Promise<void>;
+  /** Hinterlegt die Ziel-Datenbank-ID für Kurse (settings-Key `output.notion.courses_db_id`). */
+  setNotionCoursesDatabase(input: { databaseId: string | null }): Promise<void>;
+  /** Hinterlegt die Ziel-Datenbank-ID für Meetings/Transkripte (settings-Key `output.notion.meeting_db_id`). */
+  setNotionMeetingDatabase(input: { databaseId: string | null }): Promise<void>;
   /** Setzt den Ausgabe-Modus (settings-Key `output.adapter`). */
   setNotionOutputMode(input: { mode: OutputAdapterMode }): Promise<void>;
 

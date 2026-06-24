@@ -69,6 +69,8 @@ const api: UniCloudApi = {
   searchNotionDatabases: (input) => ipcRenderer.invoke(IPC.searchNotionDatabases, input),
   getNotionConfig: () => ipcRenderer.invoke(IPC.getNotionConfig),
   setNotionDatabase: (input) => ipcRenderer.invoke(IPC.setNotionDatabase, input),
+  setNotionCoursesDatabase: (input) => ipcRenderer.invoke(IPC.setNotionCoursesDatabase, input),
+  setNotionMeetingDatabase: (input) => ipcRenderer.invoke(IPC.setNotionMeetingDatabase, input),
   setNotionOutputMode: (input) => ipcRenderer.invoke(IPC.setNotionOutputMode, input),
 
   // Events Main → Renderer

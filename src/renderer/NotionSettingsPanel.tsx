@@ -32,10 +32,20 @@ export function NotionSettingsPanel(): React.JSX.Element {
   const [tokenMessage, setTokenMessage] = useState<string | null>(null);
   const [tokenOk, setTokenOk] = useState<boolean | null>(null);
 
-  // Datenbank-Picker.
+  // Inhalts-Datenbank-Picker.
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   const [dbBusy, setDbBusy] = useState(false);
   const [dbMessage, setDbMessage] = useState<string | null>(null);
+
+  // Kurs-Datenbank-Picker (optional).
+  const [selectedCoursesTitle, setSelectedCoursesTitle] = useState<string | null>(null);
+  const [coursesDbBusy, setCoursesDbBusy] = useState(false);
+  const [coursesDbMessage, setCoursesDbMessage] = useState<string | null>(null);
+
+  // Meeting-Datenbank-Picker (optional).
+  const [selectedMeetingTitle, setSelectedMeetingTitle] = useState<string | null>(null);
+  const [meetingDbBusy, setMeetingDbBusy] = useState(false);
+  const [meetingDbMessage, setMeetingDbMessage] = useState<string | null>(null);
 
   // Ausgabe-Modus.
   const [modeBusy, setModeBusy] = useState(false);
@@ -95,6 +105,62 @@ export function NotionSettingsPanel(): React.JSX.Element {
     }
   }
 
+  async function handleSelectCoursesDatabase(db: NotionDatabaseSummary): Promise<void> {
+    setCoursesDbBusy(true);
+    setCoursesDbMessage(null);
+    try {
+      await window.api.setNotionCoursesDatabase({ databaseId: db.id });
+      setSelectedCoursesTitle(db.title);
+      setConfig((current) => ({ ...current, selectedCoursesDbId: db.id }));
+    } catch (error) {
+      setCoursesDbMessage(errorMessage(error));
+    } finally {
+      setCoursesDbBusy(false);
+    }
+  }
+
+  async function handleClearCoursesDatabase(): Promise<void> {
+    setCoursesDbBusy(true);
+    setCoursesDbMessage(null);
+    try {
+      await window.api.setNotionCoursesDatabase({ databaseId: null });
+      setSelectedCoursesTitle(null);
+      setConfig((current) => ({ ...current, selectedCoursesDbId: null }));
+    } catch (error) {
+      setCoursesDbMessage(errorMessage(error));
+    } finally {
+      setCoursesDbBusy(false);
+    }
+  }
+
+  async function handleSelectMeetingDatabase(db: NotionDatabaseSummary): Promise<void> {
+    setMeetingDbBusy(true);
+    setMeetingDbMessage(null);
+    try {
+      await window.api.setNotionMeetingDatabase({ databaseId: db.id });
+      setSelectedMeetingTitle(db.title);
+      setConfig((current) => ({ ...current, selectedMeetingDbId: db.id }));
+    } catch (error) {
+      setMeetingDbMessage(errorMessage(error));
+    } finally {
+      setMeetingDbBusy(false);
+    }
+  }
+
+  async function handleClearMeetingDatabase(): Promise<void> {
+    setMeetingDbBusy(true);
+    setMeetingDbMessage(null);
+    try {
+      await window.api.setNotionMeetingDatabase({ databaseId: null });
+      setSelectedMeetingTitle(null);
+      setConfig((current) => ({ ...current, selectedMeetingDbId: null }));
+    } catch (error) {
+      setMeetingDbMessage(errorMessage(error));
+    } finally {
+      setMeetingDbBusy(false);
+    }
+  }
+
   async function handleToggleOutputMode(enabled: boolean): Promise<void> {
     setModeBusy(true);
     setModeMessage(null);
@@ -135,7 +201,7 @@ export function NotionSettingsPanel(): React.JSX.Element {
           autoComplete="off"
           value={tokenInput}
           disabled={tokenBusy}
-          placeholder="secret_…"
+          placeholder={config.connected ? "••••••••••••••••" : "secret_…"}
           onChange={(event) => { setTokenInput(event.target.value); setTokenOk(null); }}
           onKeyDown={(event) => { if (event.key === 'Enter' && !tokenBusy && tokenInput) void handleVerifyToken(); }}
         />
@@ -143,11 +209,16 @@ export function NotionSettingsPanel(): React.JSX.Element {
       <button className="button secondary" type="button" disabled={tokenBusy || !tokenInput} onClick={() => void handleVerifyToken()}>
         {tokenBusy ? 'Prüft …' : 'Überprüfen'}
       </button>
+      {config.connected && !tokenInput && (
+        <p className="muted" style={{ marginTop: '8px' }}>
+          Das Token ist sicher im macOS-Schlüsselbund hinterlegt.
+        </p>
+      )}
       {tokenMessage && <div className={tokenOk === false ? 'notice error' : 'notice'}>{tokenMessage}</div>}
     </div>
 
     <div className="panel">
-      <strong>Ziel-Datenbank</strong>
+      <strong>Ziel-Datenbank (Inhalte)</strong>
       <p className="muted">Datenbank, in die LearnWeb-Inhalte zusätzlich nach Notion gepusht werden.</p>
       <NotionDatabasePicker
         disabled={!config.connected || dbBusy}
@@ -159,20 +230,64 @@ export function NotionSettingsPanel(): React.JSX.Element {
     </div>
 
     <div className="panel">
-      <label className="option-card" style={{ cursor: modeBusy ? 'default' : 'pointer' }}>
-        <input
-          type="checkbox"
-          checked={outputEnabled}
-          disabled={modeBusy}
-          onChange={(event) => void handleToggleOutputMode(event.target.checked)}
-        />
-        <span>
-          <strong>Notion-Ausgabe aktivieren</strong>
-          <p>Zusätzlich zur lokalen Ablage auch nach Notion synchronisieren.</p>
-        </span>
-      </label>
-      {modeMessage && <div className="notice error">{modeMessage}</div>}
+      <strong>Kurs-Datenbank (optional)</strong>
+      <p className="muted">Datenbank, in der Notion-Kursseiten verknüpft oder angelegt werden.</p>
+      <NotionDatabasePicker
+        disabled={!config.connected || coursesDbBusy}
+        selectedTitle={selectedCoursesTitle}
+        selectedId={config.selectedCoursesDbId ?? null}
+        onSelect={(db) => void handleSelectCoursesDatabase(db)}
+      />
+      {config.selectedCoursesDbId && (
+        <button
+          className="text-button"
+          type="button"
+          disabled={coursesDbBusy}
+          style={{ marginTop: '8px', fontSize: '12px' }}
+          onClick={() => void handleClearCoursesDatabase()}
+        >
+          Auswahl aufheben
+        </button>
+      )}
+      {coursesDbMessage && <div className="notice error">{coursesDbMessage}</div>}
     </div>
+
+    <div className="panel">
+      <strong>Transkript-Datenbank (optional)</strong>
+      <p className="muted">Datenbank, in die Transkripte zusätzlich nach Notion gepusht werden.</p>
+      <NotionDatabasePicker
+        disabled={!config.connected || meetingDbBusy}
+        selectedTitle={selectedMeetingTitle}
+        selectedId={config.selectedMeetingDbId ?? null}
+        onSelect={(db) => void handleSelectMeetingDatabase(db)}
+      />
+      {config.selectedMeetingDbId && (
+        <button
+          className="text-button"
+          type="button"
+          disabled={meetingDbBusy}
+          style={{ marginTop: '8px', fontSize: '12px' }}
+          onClick={() => void handleClearMeetingDatabase()}
+        >
+          Auswahl aufheben
+        </button>
+      )}
+      {meetingDbMessage && <div className="notice error">{meetingDbMessage}</div>}
+    </div>
+
+    <label className={`option-card ${modeBusy ? 'disabled' : ''}`} style={{ cursor: modeBusy ? 'default' : 'pointer', marginTop: '16px' }}>
+      <input
+        type="checkbox"
+        checked={outputEnabled}
+        disabled={modeBusy}
+        onChange={(event) => void handleToggleOutputMode(event.target.checked)}
+      />
+      <span>
+        <strong>Notion-Ausgabe aktivieren</strong>
+        <p>Zusätzlich zur lokalen Ablage auch nach Notion synchronisieren.</p>
+      </span>
+    </label>
+    {modeMessage && <div className="notice error">{modeMessage}</div>}
   </>;
 }
 
