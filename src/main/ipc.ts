@@ -109,6 +109,8 @@ export function registerIpcHandlers(runtime: AppRuntime): void {
   ipcMain.handle(IPC.cancelTranscription, () => runtime.transcription.cancel());
   ipcMain.handle(IPC.retryTranscription, (_event, input: { jobId: number }) =>
     runtime.transcription.retry(requirePositiveInt(input?.jobId, 'Job-ID')));
+  ipcMain.handle(IPC.retryNotionPush, (_event, input: { jobId: number }) =>
+    runtime.transcription.retryNotionPush(requirePositiveInt(input?.jobId, 'Job-ID')));
   ipcMain.handle(IPC.removeTranscription, (_event, input: { jobId: number }) =>
     runtime.transcription.remove(requirePositiveInt(input?.jobId, 'Job-ID')));
   ipcMain.handle(IPC.openTranscript, async (_event, input: { jobId: number }) => {

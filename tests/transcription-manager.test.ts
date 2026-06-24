@@ -490,6 +490,318 @@ test('TranscriptionManager überspringt den Notion-Push, wenn für den Job berei
   }
 });
 
+test('TranscriptionManager.retryNotionPush: erfolgreicher Retry löscht pendingLocalPath und legt output_refs an', async () => {
+  const f = fixture();
+  try {
+    f.repos.settings.set('output.adapter', 'notion');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const pendingPath = join(f.root, 'pending-ok.md');
+    writeFileSync(pendingPath, '# Pending Transkript', 'utf8');
+    const id = f.repos.transcriptJobs.insert({ courseId: 7, activityCmid: null, sourceUrl: 'https://example/rec' });
+    f.repos.transcriptJobs.setStatus(id, 'done', { model: 'mlx-whisper:small', durationSeconds: 42, pendingLocalPath: pendingPath, transcriptLocalPath: null });
+    f.repos.transcriptJobs.setNotionPushResult(id, 'failed', 'Vorheriger Fehler');
+
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({ adapter: 'notion', duplicate: false, remoteRef: 'irrelevant', hash: '', sizeBytes: 0, filename: '' }),
+      placeTranscript: async () => ({ adapter: 'notion', remoteRef: 'retry-page-1' }),
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(f.root), notion: fakeNotionAdapter },
+      f.repos.settings,
+    );
+
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => f.root,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+      outputRouterFactory: async () => router,
+    });
+
+    const status = await manager.retryNotionPush(id);
+    assert.equal(status, 'ok');
+
+    const job = manager.getJobs().find((j) => j.id === id)!;
+    assert.equal(job.notionPushStatus, 'ok');
+    assert.equal(job.pendingLocalPath, null);
+    assert.equal(existsSync(pendingPath), false);
+    const ref = f.repos.outputRefs.getBySource('transcript_job', id, 'db-xyz');
+    assert.equal(ref?.notionPageId, 'retry-page-1');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('TranscriptionManager.retryNotionPush: erneuter Fehlschlag behält pendingLocalPath und aktualisiert notionPushError', async () => {
+  const f = fixture();
+  try {
+    f.repos.settings.set('output.adapter', 'notion');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const pendingPath = join(f.root, 'pending-fail-again.md');
+    writeFileSync(pendingPath, '# Pending Transkript', 'utf8');
+    const id = f.repos.transcriptJobs.insert({ courseId: 7, activityCmid: null, sourceUrl: 'https://example/rec' });
+    f.repos.transcriptJobs.setStatus(id, 'done', { model: 'small', durationSeconds: 7, pendingLocalPath: pendingPath, transcriptLocalPath: null });
+    f.repos.transcriptJobs.setNotionPushResult(id, 'failed', 'Erster Fehler');
+
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({ adapter: 'notion', duplicate: false, remoteRef: 'irrelevant', hash: '', sizeBytes: 0, filename: '' }),
+      placeTranscript: async () => { throw new Error('Notion API erneut nicht erreichbar'); },
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(f.root), notion: fakeNotionAdapter },
+      f.repos.settings,
+    );
+
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => f.root,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+      outputRouterFactory: async () => router,
+    });
+
+    const status = await manager.retryNotionPush(id);
+    assert.equal(status, 'failed');
+
+    const job = manager.getJobs().find((j) => j.id === id)!;
+    assert.equal(job.notionPushStatus, 'failed');
+    assert.match(job.notionPushError ?? '', /erneut nicht erreichbar/);
+    assert.equal(job.pendingLocalPath, pendingPath, 'Pending-Datei darf bei erneutem Fehlschlag nicht entfernt werden');
+    assert.equal(existsSync(pendingPath), true);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('TranscriptionManager.retryNotionPush erzwingt den Notion-Leg, auch wenn output.adapter aktuell auf filesystem steht', async () => {
+  const f = fixture();
+  try {
+    // Bewusst NICHT 'notion'/'both' — simuliert einen Nutzer, der nach dem
+    // ursprünglichen Fehlschlag den Adapter umgestellt hat.
+    f.repos.settings.set('output.adapter', 'filesystem');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const pendingPath = join(f.root, 'forced-notion.md');
+    writeFileSync(pendingPath, '# Pending Transkript', 'utf8');
+    const id = f.repos.transcriptJobs.insert({ courseId: 7, activityCmid: null, sourceUrl: 'https://example/rec' });
+    f.repos.transcriptJobs.setStatus(id, 'done', { model: 'small', durationSeconds: 12, pendingLocalPath: pendingPath, transcriptLocalPath: null });
+    f.repos.transcriptJobs.setNotionPushResult(id, 'failed', 'Vorheriger Fehler');
+
+    let notionCalls = 0;
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({ adapter: 'notion', duplicate: false, remoteRef: 'irrelevant', hash: '', sizeBytes: 0, filename: '' }),
+      placeTranscript: async () => { notionCalls += 1; return { adapter: 'notion', remoteRef: 'forced-page' }; },
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(f.root), notion: fakeNotionAdapter },
+      f.repos.settings,
+    );
+
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => f.root,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+      outputRouterFactory: async () => router,
+    });
+
+    const status = await manager.retryNotionPush(id);
+
+    assert.equal(notionCalls, 1, 'Notion-Adapter muss trotz output.adapter=filesystem aufgerufen werden');
+    assert.equal(status, 'ok');
+    const job = manager.getJobs().find((j) => j.id === id)!;
+    assert.equal(job.pendingLocalPath, null);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('TranscriptionManager.retryNotionPush meldet einen klaren Fehler, wenn die Pending-Datei fehlt, statt zu crashen', async () => {
+  const f = fixture();
+  try {
+    f.repos.settings.set('output.adapter', 'notion');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const missingPath = join(f.root, 'nicht-vorhanden.md');
+    const id = f.repos.transcriptJobs.insert({ courseId: 7, activityCmid: null, sourceUrl: 'https://example/rec' });
+    f.repos.transcriptJobs.setStatus(id, 'done', { model: 'small', durationSeconds: 5, pendingLocalPath: missingPath, transcriptLocalPath: null });
+    f.repos.transcriptJobs.setNotionPushResult(id, 'failed', 'Vorheriger Fehler');
+
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => f.root,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+    });
+
+    const status = await manager.retryNotionPush(id);
+
+    assert.equal(status, 'failed');
+    const job = manager.getJobs().find((j) => j.id === id)!;
+    assert.match(job.notionPushError ?? '', /nicht gefunden/);
+    assert.equal(job.pendingLocalPath, missingPath, 'Pending-Pfad darf bei fehlender Datei nicht gelöscht werden');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('TranscriptionManager.sweepFailedNotionPushes retried alle fehlgeschlagenen Jobs; ein dauerhaft fehlschlagender Job bricht die anderen nicht ab', async () => {
+  const f = fixture();
+  try {
+    f.repos.settings.set('output.adapter', 'notion');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const okPath = join(f.root, 'sweep-ok.md');
+    writeFileSync(okPath, '# OK', 'utf8');
+    const okId = f.repos.transcriptJobs.insert({ courseId: 7, activityCmid: null, sourceUrl: 'https://example/ok' });
+    f.repos.transcriptJobs.setStatus(okId, 'done', { model: 'small', durationSeconds: 1, pendingLocalPath: okPath, transcriptLocalPath: null });
+    f.repos.transcriptJobs.setNotionPushResult(okId, 'failed', 'Vorheriger Fehler');
+
+    const missingPath = join(f.root, 'sweep-missing.md');
+    const missingId = f.repos.transcriptJobs.insert({ courseId: 7, activityCmid: null, sourceUrl: 'https://example/missing' });
+    f.repos.transcriptJobs.setStatus(missingId, 'done', { model: 'small', durationSeconds: 1, pendingLocalPath: missingPath, transcriptLocalPath: null });
+    f.repos.transcriptJobs.setNotionPushResult(missingId, 'failed', 'Vorheriger Fehler');
+
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({ adapter: 'notion', duplicate: false, remoteRef: 'irrelevant', hash: '', sizeBytes: 0, filename: '' }),
+      placeTranscript: async () => ({ adapter: 'notion', remoteRef: 'sweep-page' }),
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(f.root), notion: fakeNotionAdapter },
+      f.repos.settings,
+    );
+
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => f.root,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+      outputRouterFactory: async () => router,
+    });
+
+    await manager.sweepFailedNotionPushes();
+
+    const okJob = manager.getJobs().find((j) => j.id === okId)!;
+    assert.equal(okJob.notionPushStatus, 'ok');
+    assert.equal(okJob.pendingLocalPath, null);
+
+    const missingJob = manager.getJobs().find((j) => j.id === missingId)!;
+    assert.equal(missingJob.notionPushStatus, 'failed');
+    assert.match(missingJob.notionPushError ?? '', /nicht gefunden/);
+    assert.equal(missingJob.pendingLocalPath, missingPath);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('TranscriptionManager.start() führt nach Queue-Drain automatisch einen Sweep für fehlgeschlagene Notion-Pushes aus', async () => {
+  const f = fixture();
+  try {
+    f.repos.settings.set('output.adapter', 'notion');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const pendingPath = join(f.root, 'sweep-on-start.md');
+    writeFileSync(pendingPath, '# Pending', 'utf8');
+    const id = f.repos.transcriptJobs.insert({ courseId: 7, activityCmid: null, sourceUrl: 'https://example/rec' });
+    f.repos.transcriptJobs.setStatus(id, 'done', { model: 'small', durationSeconds: 3, pendingLocalPath: pendingPath, transcriptLocalPath: null });
+    f.repos.transcriptJobs.setNotionPushResult(id, 'failed', 'Vorheriger Fehler');
+
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({ adapter: 'notion', duplicate: false, remoteRef: 'irrelevant', hash: '', sizeBytes: 0, filename: '' }),
+      placeTranscript: async () => ({ adapter: 'notion', remoteRef: 'auto-sweep-page' }),
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(f.root), notion: fakeNotionAdapter },
+      f.repos.settings,
+    );
+
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => f.root,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+      outputRouterFactory: async () => router,
+    });
+
+    // Keine Queue-Jobs vorhanden -> die while-Schleife in start() läuft 0x,
+    // der Sweep muss trotzdem automatisch ausgeführt werden.
+    await manager.start();
+
+    const job = manager.getJobs().find((j) => j.id === id)!;
+    assert.equal(job.notionPushStatus, 'ok');
+    assert.equal(job.pendingLocalPath, null);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('TranscriptionManager.start() überspringt den automatischen Sweep, wenn der Lauf abgebrochen wurde', async () => {
+  const f = fixture();
+  try {
+    f.repos.settings.set('output.adapter', 'notion');
+    f.repos.settings.set('output.notion.lw_db_id', 'db-xyz');
+
+    const pendingPath = join(f.root, 'sweep-on-cancel.md');
+    writeFileSync(pendingPath, '# Pending', 'utf8');
+    const failedId = f.repos.transcriptJobs.insert({ courseId: 7, activityCmid: null, sourceUrl: 'https://example/rec' });
+    f.repos.transcriptJobs.setStatus(failedId, 'done', { model: 'small', durationSeconds: 3, pendingLocalPath: pendingPath, transcriptLocalPath: null });
+    f.repos.transcriptJobs.setNotionPushResult(failedId, 'failed', 'Vorheriger Fehler');
+
+    let notionCalls = 0;
+    const fakeNotionAdapter: OutputTarget = {
+      kind: 'notion',
+      placeFile: async () => ({ adapter: 'notion', duplicate: false, remoteRef: 'irrelevant', hash: '', sizeBytes: 0, filename: '' }),
+      placeTranscript: async () => { notionCalls += 1; return { adapter: 'notion', remoteRef: 'sollte-nicht-laufen' }; },
+    };
+    const router = new OutputRouter(
+      { filesystem: new FilesystemAdapter(f.root), notion: fakeNotionAdapter },
+      f.repos.settings,
+    );
+
+    let workerStarted!: () => void;
+    const started = new Promise<void>((resolve) => { workerStarted = resolve; });
+    const manager = new TranscriptionManager({
+      repos: f.repos,
+      getSession: async () => f.fakeSession,
+      getLibraryPath: () => f.root,
+      workerDir: join(f.root, 'worker'),
+      onStatus: () => undefined,
+      outputRouterFactory: async () => router,
+      runWorker: (_request, _onProgress, signal) => new Promise((_resolve, reject) => {
+        workerStarted();
+        signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true });
+      }),
+    });
+
+    const candidate = (await manager.scanRecordings())[0]!;
+    manager.enqueue([candidate.recordingKey]);
+    const run = manager.start();
+    await started;
+    manager.cancel();
+    await run;
+
+    assert.equal(notionCalls, 0, 'Sweep darf nach einem Abbruch nicht laufen');
+    const failedJob = manager.getJobs().find((j) => j.id === failedId)!;
+    assert.equal(failedJob.notionPushStatus, 'failed');
+    assert.equal(failedJob.pendingLocalPath, pendingPath);
+  } finally {
+    f.cleanup();
+  }
+});
+
 function response(path: string, data: string) {
   return { status: 200, url: `https://learnweb.example${path}`, headers: {}, data };
 }

@@ -510,6 +510,9 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
   const removeStmt = db.prepare('DELETE FROM transcript_jobs WHERE id = ?');
   const getAllStmt = db.prepare('SELECT * FROM transcript_jobs ORDER BY id');
   const byIdStmt = db.prepare('SELECT * FROM transcript_jobs WHERE id = ?');
+  const failedNotionPushStmt = db.prepare(
+    `SELECT * FROM transcript_jobs WHERE notion_push_status = 'failed' AND pending_local_path IS NOT NULL ORDER BY id`,
+  );
 
   const map = (r: Record<string, unknown>): TranscriptJob => ({
     id: r.id as number,
@@ -646,6 +649,10 @@ export function makeTranscriptJobsRepo(db: AppDatabase) {
     /** Persistiert das Ergebnis des letzten Notion-Push-Versuchs (kein Silent Fail über Neustart hinweg). */
     setNotionPushResult(id: number, status: TranscriptJob['notionPushStatus'], error: string | null): void {
       setNotionPushResultStmt.run({ id, status, error });
+    },
+    /** Jobs mit fehlgeschlagenem Notion-Push, deren Transkript noch als Pending-Datei vorliegt (Issue #42, Sweep). */
+    listFailedNotionPushes(): TranscriptJob[] {
+      return (failedNotionPushStmt.all() as Record<string, unknown>[]).map(map);
     },
     /** Crash-Recovery: alle unterbrochenen Jobs auf 'pending' zurücksetzen. */
     recoverInterrupted(): void {

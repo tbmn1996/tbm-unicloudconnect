@@ -69,6 +69,7 @@ export const IPC = {
   startTranscriptionQueue: 'transcription:startQueue',
   cancelTranscription: 'transcription:cancel',
   retryTranscription: 'transcription:retry',
+  retryNotionPush: 'transcription:retryNotionPush',
   removeTranscription: 'transcription:remove',
   openTranscript: 'transcription:openTranscript',
   // MCP (Strang B) — optional, lokal, opt-in
@@ -146,6 +147,8 @@ export interface UniCloudApi {
   cancelTranscription(): Promise<void>;
   /** Wiederholt einen fehlgeschlagenen Job. */
   retryTranscription(input: { jobId: number }): Promise<void>;
+  /** Wiederholt einen fehlgeschlagenen Notion-Push, ohne den Worker erneut zu starten. */
+  retryNotionPush(input: { jobId: number }): Promise<void>;
   /** Entfernt einen nicht-aktiven Job aus der Queue. */
   removeTranscription(input: { jobId: number }): Promise<void>;
   /** Öffnet das fertige Markdown-Transkript im Finder/Editor. */

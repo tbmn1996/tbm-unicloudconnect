@@ -331,6 +331,16 @@ export function App(): React.JSX.Element {
     await startTranscriptionQueue();
   }
 
+  async function retryNotionPush(jobId: number): Promise<void> {
+    setMessage(null);
+    try {
+      await window.api.retryNotionPush({ jobId });
+      setTranscriptJobs(await window.api.getTranscriptJobs());
+    } catch (error) {
+      setMessage(errorMessage(error));
+    }
+  }
+
   async function removeTranscription(jobId: number): Promise<void> {
     // Entfernt einen nicht-aktiven Job lokal aus der Queue (Backend lehnt aktive Jobs ab).
     setMessage(null);
@@ -474,6 +484,7 @@ export function App(): React.JSX.Element {
       startTranscriptionQueue={startTranscriptionQueue}
       cancelTranscription={cancelTranscription}
       retryTranscription={retryTranscription}
+      retryNotionPush={retryNotionPush}
       removeTranscription={removeTranscription}
       mcpStatus={mcpStatus}
       setMcpEnabled={setMcpEnabled}
@@ -646,6 +657,7 @@ function Dashboard(props: {
   startTranscriptionQueue(): Promise<void>;
   cancelTranscription(): Promise<void>;
   retryTranscription(jobId: number): Promise<void>;
+  retryNotionPush(jobId: number): Promise<void>;
   removeTranscription(jobId: number): Promise<void>;
   mcpStatus: McpRuntimeStatus;
   setMcpEnabled(enabled: boolean): Promise<void>;
@@ -707,6 +719,7 @@ function TranscriptionPanel(props: {
   startTranscriptionQueue(): Promise<void>;
   cancelTranscription(): Promise<void>;
   retryTranscription(jobId: number): Promise<void>;
+  retryNotionPush(jobId: number): Promise<void>;
   removeTranscription(jobId: number): Promise<void>;
 }): React.JSX.Element {
   const toggleRecording = (key: string): void => {
@@ -944,9 +957,16 @@ function TranscriptionPanel(props: {
                     </div>
                   </div>
                   <div className="item-actions">
-                    <button className="text-button open" type="button" onClick={() => void window.api.openTranscript({ jobId: job.id })}>
-                      Öffnen
-                    </button>
+                    {job.transcriptLocalPath && (
+                      <button className="text-button open" type="button" onClick={() => void window.api.openTranscript({ jobId: job.id })}>
+                        Öffnen
+                      </button>
+                    )}
+                    {job.notionPushStatus === 'failed' && job.pendingLocalPath && (
+                      <button className="text-button retry-notion" type="button" disabled={props.busy} onClick={() => void props.retryNotionPush(job.id)}>
+                        Erneut an Notion senden
+                      </button>
+                    )}
                     <button className="text-button remove" type="button" disabled={props.busy} onClick={() => void props.removeTranscription(job.id)}>
                       Entfernen
                     </button>

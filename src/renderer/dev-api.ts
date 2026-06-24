@@ -74,6 +74,7 @@ export function createDevApi(): UniCloudApi {
     startTranscriptionQueue: async () => undefined,
     cancelTranscription: async () => undefined,
     retryTranscription: async () => undefined,
+    retryNotionPush: async () => undefined,
     removeTranscription: async () => undefined,
     openTranscript: async () => undefined,
 

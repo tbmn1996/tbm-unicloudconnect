@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -226,6 +226,9 @@ export class TranscriptionManager {
         await this.processJob(job);
         job = this.cancelRequested ? null : this.options.repos.transcriptJobs.claimNext();
       }
+      if (!this.cancelRequested) {
+        await this.sweepFailedNotionPushes();
+      }
     } finally {
       this.running = false;
       this.activeJob = null;
@@ -255,6 +258,58 @@ export class TranscriptionManager {
     this.options.repos.transcriptJobs.setStatus(jobId, 'pending', { errorCode: null });
     this.options.repos.transcriptJobs.resetRetry(jobId);
     this.publish();
+  }
+
+  /**
+   * Wiederholt einen fehlgeschlagenen Notion-Push, ohne den Whisper-Worker
+   * erneut zu starten. Liest das Transkript aus der bewahrten `pendingLocalPath`-
+   * Kopie und erzwingt den Notion-Leg unabhängig vom aktuellen `output.adapter`-
+   * Setting (Issue #42) — sonst könnte ein Retry nach einem Wechsel auf
+   * 'filesystem' den Notion-Push stillschweigend überspringen.
+   */
+  async retryNotionPush(jobId: number): Promise<NotionPushStatus> {
+    const job = this.options.repos.transcriptJobs.getById(jobId);
+    if (!job) throw new Error('Job nicht gefunden.');
+    if (job.notionPushStatus !== 'failed' || !job.pendingLocalPath) {
+      throw new Error('Kein fehlgeschlagener Notion-Push mit lokaler Sicherungskopie vorhanden.');
+    }
+    if (!existsSync(job.pendingLocalPath)) {
+      const message = `Pending-Transkript-Datei nicht gefunden: ${job.pendingLocalPath}`;
+      appendLog('ERROR', `[transcription] Retry für Job ${job.id} fehlgeschlagen: ${message}`);
+      this.options.repos.transcriptJobs.setNotionPushResult(job.id, 'failed', message);
+      this.publish();
+      return 'failed';
+    }
+    const course = this.options.repos.courses.getAll().find((item) => item.courseId === job.courseId);
+    if (!course) throw new Error('Kurs zum Transkriptionsjob fehlt.');
+    const libraryRoot = this.options.getLibraryPath() ?? dirname(job.pendingLocalPath);
+    const status = await this.pushMarkdownToOutputRouter(
+      job, course, libraryRoot, job.pendingLocalPath, job.model ?? 'unknown', job.durationSeconds ?? 0, true,
+    );
+    if (status === 'ok' || status === 'warnings') {
+      await rm(job.pendingLocalPath, { force: true });
+      this.options.repos.transcriptJobs.setStatus(job.id, 'done', { pendingLocalPath: null });
+    }
+    this.publish();
+    return status;
+  }
+
+  /**
+   * Durchläuft alle Jobs mit fehlgeschlagenem Notion-Push + bewahrter
+   * Pending-Datei und versucht den Push erneut. Fehler pro Job werden
+   * gefangen, damit ein dauerhaft fehlschlagender Job den Sweep nicht
+   * abbricht.
+   */
+  async sweepFailedNotionPushes(): Promise<void> {
+    const failedJobs = this.options.repos.transcriptJobs.listFailedNotionPushes();
+    for (const job of failedJobs) {
+      try {
+        await this.retryNotionPush(job.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        appendLog('WARN', `[transcription] Sweep: Retry für Job ${job.id} fehlgeschlagen: ${message}`);
+      }
+    }
   }
 
   /** Entfernt einen nicht-aktiven Job dauerhaft aus der Queue. */
@@ -400,11 +455,31 @@ export class TranscriptionManager {
     libraryRoot: string,
     result: WorkerResult,
   ): Promise<NotionPushStatus> {
+    return this.pushMarkdownToOutputRouter(job, course, libraryRoot, result.transcriptPath, result.model, result.durationSeconds);
+  }
+
+  /**
+   * Liest eine Transkript-`.md`-Datei (frisch vom Worker oder eine bewahrte
+   * `pendingLocalPath`-Kopie bei Retry) und reicht sie an den Output-Router
+   * weiter. `forceNotion` erzwingt den Notion-Leg unabhängig vom aktuellen
+   * `output.adapter`-Setting (Issue #42, manueller Retry). Schlägt der Push
+   * fehl, darf das einen bereits erfolgreich transkribierten Job NICHT als
+   * fehlgeschlagen markieren — Fehler werden nur geloggt.
+   */
+  private async pushMarkdownToOutputRouter(
+    job: TranscriptJob,
+    course: Course,
+    libraryRoot: string,
+    transcriptPath: string,
+    model: string,
+    durationSeconds: number,
+    forceNotion = false,
+  ): Promise<NotionPushStatus> {
     try {
       const router = await (this.options.outputRouterFactory
         ? this.options.outputRouterFactory(libraryRoot)
         : this.buildDefaultRouter(libraryRoot));
-      const markdown = await readFile(result.transcriptPath, 'utf-8');
+      const markdown = await readFile(transcriptPath, 'utf-8');
       const notionDatabaseId = this.options.repos.settings.get(OUTPUT_NOTION_MEETING_DATABASE_ID_SETTING_KEY)
         || this.options.repos.settings.get(OUTPUT_NOTION_DATABASE_ID_SETTING_KEY);
       const alreadyPushedToNotion = !!(notionDatabaseId
@@ -413,11 +488,11 @@ export class TranscriptionManager {
         course: { courseId: course.courseId, fullname: course.fullname, semester: course.semester, courseUrl: course.courseUrl },
         title: job.title,
         recordingDate: job.recordingDate,
-        model: result.model,
-        durationSeconds: result.durationSeconds,
+        model,
+        durationSeconds,
         markdown,
-        alreadyWrittenLocalPath: result.transcriptPath,
-      }, { skipNotion: alreadyPushedToNotion });
+        alreadyWrittenLocalPath: transcriptPath,
+      }, { skipNotion: alreadyPushedToNotion, forceNotion });
       if (placed.warnings && placed.warnings.length > 0) {
         for (const warning of placed.warnings) {
           console.warn(`[transcription] Output-Router-Push Warnung für Job ${job.id}: ${warning}`);

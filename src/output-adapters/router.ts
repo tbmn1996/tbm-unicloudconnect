@@ -62,6 +62,12 @@ type OutputRouterMode = 'filesystem' | 'notion' | 'both';
 export interface RouterCallOptions {
   /** Notion-Leg überspringen, z. B. weil bereits ein `output_ref` existiert. */
   skipNotion?: boolean;
+  /**
+   * Erzwingt den Notion-Leg unabhängig vom aktuellen `output.adapter`-Setting
+   * und überspringt den Filesystem-Leg. Nur für `placeTranscript` relevant
+   * (manueller Notion-Push-Retry, Issue #42) — `placeFile` bleibt unverändert.
+   */
+  forceNotion?: boolean;
 }
 
 export class OutputRouter {
@@ -105,7 +111,7 @@ export class OutputRouter {
   }
 
   async placeTranscript(input: PlaceTranscriptInput, options?: RouterCallOptions): Promise<RouterPlaceTranscriptResult> {
-    const mode = normalizeMode(this.settings.get('output.adapter'));
+    const mode = options?.forceNotion ? 'notion' : normalizeMode(this.settings.get('output.adapter'));
     const warnings: string[] = [];
     let filesystem: PlaceTranscriptResult | undefined;
     let notion: PlaceTranscriptResult | undefined;

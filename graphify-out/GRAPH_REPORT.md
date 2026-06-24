@@ -1,16 +1,16 @@
-# Graph Report - tbm-unicloudconnect  (2026-06-24)
+# Graph Report - tbm-unicloudconnect  (2026-06-25)
 
 ## Corpus Check
-- 119 files · ~93,029 words
+- 119 files · ~94,841 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1050 nodes · 1955 edges · 68 communities (58 shown, 10 thin omitted)
+- 1053 nodes · 1971 edges · 64 communities (53 shown, 11 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 1 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `103c72b3`
+- Built from commit: `e870bbd1`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -43,7 +43,6 @@
 - [[_COMMUNITY_Community 26|Community 26]]
 - [[_COMMUNITY_Community 27|Community 27]]
 - [[_COMMUNITY_Community 28|Community 28]]
-- [[_COMMUNITY_Community 29|Community 29]]
 - [[_COMMUNITY_Community 30|Community 30]]
 - [[_COMMUNITY_Community 31|Community 31]]
 - [[_COMMUNITY_Community 32|Community 32]]
@@ -76,13 +75,10 @@
 - [[_COMMUNITY_Community 62|Community 62]]
 - [[_COMMUNITY_Community 63|Community 63]]
 - [[_COMMUNITY_Community 64|Community 64]]
-- [[_COMMUNITY_Community 65|Community 65]]
-- [[_COMMUNITY_Community 66|Community 66]]
-- [[_COMMUNITY_Community 67|Community 67]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `LearnwebSession` - 35 edges
-2. `TranscriptionManager` - 27 edges
+2. `TranscriptionManager` - 30 edges
 3. `createRepos()` - 23 edges
 4. `AppRuntime` - 22 edges
 5. `process_request()` - 20 edges
@@ -97,17 +93,17 @@
   src/local-library/store.ts → GUI Design/support.js
 - `seedDatabase()` --calls--> `openDatabase()`  [EXTRACTED]
   tests/mcp.test.ts → src/db/db.ts
+- `fixture()` --calls--> `createRepos()`  [EXTRACTED]
+  tests/transcription-manager.test.ts → src/db/repos.ts
+- `fixture()` --calls--> `createRepos()`  [EXTRACTED]
+  tests/transcription-remove.test.ts → src/db/repos.ts
 - `resolveNotionAdapter()` --calls--> `getPassword()`  [EXTRACTED]
   tests/notion-push.it.test.ts → src/keychain/keychain.ts
-- `fixture()` --calls--> `openDatabase()`  [EXTRACTED]
-  tests/transcription-manager.test.ts → src/db/db.ts
-- `fixture()` --calls--> `openDatabase()`  [EXTRACTED]
-  tests/transcription-remove.test.ts → src/db/db.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (68 total, 10 thin omitted)
+## Communities (64 total, 11 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.08
@@ -126,20 +122,20 @@ Cohesion: 0.04
 Nodes (48): dependencies, axios, axios-cookiejar-support, better-sqlite3, cheerio, @modelcontextprotocol/sdk, tough-cookie, zod (+40 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.18
-Nodes (8): broadcastSyncStatus(), broadcastTranscriptionStatus(), openLibraryFolderAction(), registerIpcHandlers(), createMainWindow(), markAppQuitting(), showMainWindow(), toggleMainWindow()
+Cohesion: 0.14
+Nodes (11): checkLibraryPath(), createAndCheckLibraryPath(), broadcastSyncStatus(), broadcastTranscriptionStatus(), openLibraryFolderAction(), registerIpcHandlers(), createMainWindow(), markAppQuitting() (+3 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.09
-Nodes (24): assertSafeIdentifier(), assertSafePassword(), buildAddArgs(), buildDeleteArgs(), buildFindArgs(), deleteCredential(), execFileAsync, getPassword() (+16 more)
+Cohesion: 0.08
+Nodes (25): Repos, assertSafeIdentifier(), assertSafePassword(), buildAddArgs(), buildDeleteArgs(), buildFindArgs(), deleteCredential(), execFileAsync (+17 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.09
-Nodes (13): Dashboard(), DashboardTab, dashboardTitle(), DEFAULT_TRANSCRIPTION_SETTINGS, EMPTY_MCP, EMPTY_SYNC, EMPTY_TRANSCRIPTION, formatDate() (+5 more)
+Cohesion: 0.08
+Nodes (16): App(), Dashboard(), DashboardTab, dashboardTitle(), DEFAULT_TRANSCRIPTION_SETTINGS, EMPTY_MCP, EMPTY_SYNC, EMPTY_TRANSCRIPTION (+8 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.10
-Nodes (16): sanitizePathSegment(), TranscriptionPhase, TranscriptionSettings, TranscriptJob, buildTranscriptPath(), DEFAULT_SETTINGS, fileExists(), moveToPendingTranscriptDir() (+8 more)
+Cohesion: 0.09
+Nodes (22): appendLog(), getLogFilePath(), isElectronRuntime(), LogLevel, NotionPushStatus, Course, TranscriptionPhase, TranscriptionSettings (+14 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.11
@@ -158,28 +154,24 @@ Cohesion: 0.09
 Nodes (22): 1. Motivation, 2. Design-Entscheidungen (fixiert), 3.1 Output-Pfad im Code, 3.2 Relevante Entitäten, 3.3 Transkripte in learnweb_sync (Referenz), 3. Ist-Zustand in MVP 1, 4.1 Adapter-Verantwortlichkeiten, 4.2 Adapter-Auswahl (+14 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.12
-Nodes (18): buildRelativeLibraryPath(), LibraryPathInput, FilesystemAdapter, normalizeMode(), NotionPushStatus, OutputRouter, OutputRouterMode, OutputRouterSettings (+10 more)
-
-### Community 13 - "Community 13"
-Cohesion: 0.17
-Nodes (5): Repos, StatusTray, McpRuntimeOptions, SyncStatus, SyncEngine
+Cohesion: 0.05
+Nodes (48): LearnwebFileTooLargeError, LearnwebTimeoutError, buildRelativeLibraryPath(), LibraryPathInput, sanitizePathSegment(), assertInsideRoot(), exists(), hasHash() (+40 more)
 
 ### Community 14 - "Community 14"
 Cohesion: 0.24
 Nodes (13): Any, emit_event(), get_transcription_backend(), main(), normalize_audio(), process_request(), Lese Audio-/Videodatei mit PyAV ein und schreibe als 16 kHz Mono WAV.     Nutze, Transkribiere Audio mit Whisper-Backend.     Gibt (transcript, backend_label) zu (+5 more)
 
 ### Community 15 - "Community 15"
-Cohesion: 0.09
-Nodes (28): AppDatabase, getUserVersion(), initSchema(), MIGRATIONS, openDatabase(), runMigrations(), createRepos(), makeActivitiesRepo() (+20 more)
+Cohesion: 0.21
+Nodes (13): createRepos(), makeActivitiesRepo(), makeCoursesRepo(), makeCredentialRefsRepo(), makeDownloadJobsRepo(), makeFileAssetsRepo(), makeMcpStatusRepo(), makeOutputRefsRepo() (+5 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.11
-Nodes (16): CredentialRef, DownloadJobStatus, FileAssetStatus, McpTransport, OutputRef, OutputRefSourceType, Profile, RecordingSourceKind (+8 more)
+Cohesion: 0.08
+Nodes (20): EMPTY_CONFIG, NotionSettingsPanel(), CredentialRef, DownloadJobStatus, FileAssetStatus, McpTransport, NotionConfigState, NotionDatabaseSummary (+12 more)
 
 ### Community 17 - "Community 17"
-Cohesion: 0.22
-Nodes (13): appendLog(), getLogFilePath(), isElectronRuntime(), LogLevel, dateProperty(), extractPageId(), firstPageId(), NotionAdapter (+5 more)
+Cohesion: 0.21
+Nodes (10): AppDatabase, getUserVersion(), initSchema(), MIGRATIONS, openDatabase(), runMigrations(), EXPECTED_TABLES, seedDatabase() (+2 more)
 
 ### Community 18 - "Community 18"
 Cohesion: 0.12
@@ -210,8 +202,8 @@ Cohesion: 0.21
 Nodes (8): Test mlx-whisper Modell-zu-Repo-Abbildung., Modell 'tiny' sollte auf tiny-mlx gemappt werden., Modell 'large-v3' sollte auf large-v3-mlx gemappt werden., Das offizielle Turbo-Repo trägt kein zusätzliches -mlx-Suffix., Unbekanntes Modell sollte auf small-mlx defaulten., TestMlxModelMapping, _map_model_to_mlx_repo(), Bilde Whisper-Modellnamen auf MLX-Community Hugging Face Repos ab.     Default:
 
 ### Community 26 - "Community 26"
-Cohesion: 0.18
-Nodes (9): App(), courses, createDevApi(), listeners, state, syncStatus, transcriptionListeners, container (+1 more)
+Cohesion: 0.53
+Nodes (5): TranscriptJobStatus, createV1Database(), createV2Database(), createV3Database(), createV4Database()
 
 ### Community 27 - "Community 27"
 Cohesion: 0.24
@@ -220,10 +212,6 @@ Nodes (8): Path, Test Path-Sicherheit gegen Directory-Traversal., Pfade sollten 
 ### Community 28 - "Community 28"
 Cohesion: 0.09
 Nodes (22): extractIcon(), extractPlainTitle(), extractWorkspaceName(), getConfig(), normalizeAdapterMode(), NotionClientLike, NotionSetupRepos, resolveDeps() (+14 more)
-
-### Community 29 - "Community 29"
-Cohesion: 0.25
-Nodes (11): checkLibraryPath(), createAndCheckLibraryPath(), assertInsideRoot(), exists(), hasHash(), isInsideRoot(), resultFor(), sha256() (+3 more)
 
 ### Community 30 - "Community 30"
 Cohesion: 0.15
@@ -310,35 +298,23 @@ Cohesion: 0.29
 Nodes (7): 1. Kontext (Context), 2. Entscheidung (Decision), 3. Konsequenzen (Consequences), 4. Folgeschritte (nicht Teil dieser ADR), ADR 0002: Aufhebung des Notion-Ausschlusses — Notion-Output-Adapter für MVP 2, Negative Konsequenzen / Risiken:, Positive Konsequenzen:
 
 ### Community 64 - "Community 64"
-Cohesion: 0.18
-Nodes (11): api, Window, AppSettings, FileAsset, LibraryPathCheck, McpStatus, OutputAdapterMode, TranscriptionStatus (+3 more)
-
-### Community 65 - "Community 65"
-Cohesion: 0.18
-Nodes (8): LearnwebFileTooLargeError, LearnwebTimeoutError, ActivityStatus, DownloadJob, SyncRun, DownloadOutcome, finalActivityStatus(), SyncAccess
-
-### Community 66 - "Community 66"
-Cohesion: 0.29
-Nodes (4): EMPTY_CONFIG, NotionSettingsPanel(), NotionConfigState, NotionDatabaseSummary
-
-### Community 67 - "Community 67"
-Cohesion: 0.40
-Nodes (3): createNotionAdapter(), course, DEFAULT_SCHEMA
+Cohesion: 0.13
+Nodes (15): AppRuntimeOptions, api, courses, listeners, state, syncStatus, transcriptionListeners, Window (+7 more)
 
 ## Knowledge Gaps
 - **311 isolated node(s):** `name`, `version`, `private`, `type`, `description` (+306 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **11 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Path` connect `Community 27` to `Community 33`, `Community 2`, `Community 22`, `Community 14`?**
-  _High betweenness centrality (0.124) - this node is a cross-community bridge._
+  _High betweenness centrality (0.121) - this node is a cross-community bridge._
 - **Why does `process_request()` connect `Community 14` to `Community 33`, `Community 34`, `Community 44`, `Community 21`, `Community 22`, `Community 23`, `Community 24`, `Community 27`?**
-  _High betweenness centrality (0.077) - this node is a cross-community bridge._
-- **Why does `storeFile()` connect `Community 29` to `Community 65`, `Community 1`, `Community 12`, `Community 13`?**
-  _High betweenness centrality (0.054) - this node is a cross-community bridge._
+  _High betweenness centrality (0.080) - this node is a cross-community bridge._
+- **Why does `storeFile()` connect `Community 12` to `Community 1`?**
+  _High betweenness centrality (0.055) - this node is a cross-community bridge._
 - **What connects `name`, `version`, `private` to the rest of the system?**
   _369 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**

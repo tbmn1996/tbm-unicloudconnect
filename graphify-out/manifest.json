@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "src/db/repos.ts": {
-    "mtime": 1782333152.7155845,
-    "ast_hash": "d66433bcc6b5ad045ca77d21ee231964",
+    "mtime": 1782338387.0943947,
+    "ast_hash": "c357ef7890b8e30a5449acfacb1d3cf4",
     "semantic_hash": ""
   },
   "src/db/schema.ts": {
@@ -135,8 +135,8 @@
     "semantic_hash": ""
   },
   "src/main/ipc.ts": {
-    "mtime": 1782296521.4503756,
-    "ast_hash": "8e72586d40e58513dccb213b5c1a8781",
+    "mtime": 1782338401.753462,
+    "ast_hash": "a97c2844929be0945051666a3782f566",
     "semantic_hash": ""
   },
   "src/main/runtime.ts": {
@@ -195,18 +195,18 @@
     "semantic_hash": ""
   },
   "src/preload/index.ts": {
-    "mtime": 1782296521.4514983,
-    "ast_hash": "0f7995bb258e793647e66b89bbaf559d",
+    "mtime": 1782338407.1629663,
+    "ast_hash": "42d559e2b8973b148b50224ad593f718",
     "semantic_hash": ""
   },
   "src/renderer/App.tsx": {
-    "mtime": 1782291587.0079663,
-    "ast_hash": "16174796abdba313da7e9db58ae0ced7",
+    "mtime": 1782338478.4388711,
+    "ast_hash": "911101e90efc7bd6f11b43757bebffe5",
     "semantic_hash": ""
   },
   "src/renderer/dev-api.ts": {
-    "mtime": 1782296521.4521112,
-    "ast_hash": "371a29691d08c41f1742664a4a95e735",
+    "mtime": 1782338416.7988155,
+    "ast_hash": "8c463aa3157e1c50a71fa21a124b580b",
     "semantic_hash": ""
   },
   "src/renderer/env.d.ts": {
@@ -225,8 +225,8 @@
     "semantic_hash": ""
   },
   "src/shared/ipc.ts": {
-    "mtime": 1782296521.4525561,
-    "ast_hash": "40997d762de84ab6e3d35876088aa3d2",
+    "mtime": 1782338396.9420283,
+    "ast_hash": "47add5cab7895ebde9b5498024f4dfcd",
     "semantic_hash": ""
   },
   "src/sync-engine/engine.ts": {
@@ -245,8 +245,8 @@
     "semantic_hash": ""
   },
   "src/transcription/manager.ts": {
-    "mtime": 1782333152.7164829,
-    "ast_hash": "4dd1f358ca266b6cc17605118778a90b",
+    "mtime": 1782338369.666734,
+    "ast_hash": "d86ebb911fe8f7de0605adb947db3624",
     "semantic_hash": ""
   },
   "tests/db.test.ts": {
@@ -315,8 +315,8 @@
     "semantic_hash": ""
   },
   "tests/transcription-manager.test.ts": {
-    "mtime": 1782333200.045616,
-    "ast_hash": "69dd9b4215aa169ad283f12784af6bee",
+    "mtime": 1782338610.0496237,
+    "ast_hash": "6b84308e0e37dfc7f9dd01471ac473fa",
     "semantic_hash": ""
   },
   "transcription-worker/pyproject.toml": {
@@ -575,8 +575,8 @@
     "semantic_hash": ""
   },
   "src/output-adapters/router.ts": {
-    "mtime": 1782319828.3183935,
-    "ast_hash": "e1a994339a99b739860de9aea211d4a6",
+    "mtime": 1782338322.0961134,
+    "ast_hash": "657cdd63fcdad031cd9120bf33475248",
     "semantic_hash": ""
   },
   "src/output-adapters/types.ts": {
